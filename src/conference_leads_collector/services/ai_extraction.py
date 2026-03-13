@@ -131,7 +131,6 @@ class AiConferenceRefiner:
         return {
             "model": self.settings.ai_gateway_model,
             "temperature": 0,
-            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": instructions},
                 {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},

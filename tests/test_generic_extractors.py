@@ -64,3 +64,23 @@ def test_extract_conference_data_ignores_navigation_noise_in_sponsors() -> None:
     result = extract_conference_data("https://example.com", NOISE_HTML)
 
     assert result.sponsors == []
+
+
+SPEAKER_NOISE_HTML = """
+<html>
+  <body>
+    <section>
+      <h2>Спикеры</h2>
+      <div class="speaker-card"><h3>Registration Ru En</h3></div>
+      <div class="speaker-card"><h3>Samsung Electronics</h3></div>
+      <div class="speaker-card"><h3>Дмитрий Аникин</h3><p>CMO, Example</p></div>
+    </section>
+  </body>
+</html>
+"""
+
+
+def test_extract_conference_data_ignores_noise_in_speakers() -> None:
+    result = extract_conference_data("https://example.com", SPEAKER_NOISE_HTML)
+
+    assert [speaker.full_name for speaker in result.speakers] == ["Дмитрий Аникин"]

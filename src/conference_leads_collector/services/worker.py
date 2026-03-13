@@ -88,7 +88,7 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
             status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
             if active_ai_refiner is not None:
                 refined = active_ai_refiner.refine(source.seed_url, html, extracted)
-                if score_extraction(refined) >= score_extraction(extracted):
+                if refined.speakers or refined.sponsors:
                     extracted = refined
             if not _has_high_quality_entities(extracted):
                 jobs.mark_failed(job, "No high-quality entities found")

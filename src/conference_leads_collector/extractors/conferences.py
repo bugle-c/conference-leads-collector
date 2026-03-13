@@ -59,6 +59,43 @@ DISCOVERY_KEYWORDS = (
     "track",
     "tracks",
 )
+SPEAKER_NOISE_EXACT = {
+    "registration",
+    "register",
+    "ru en",
+    "en ru",
+    "купить билет",
+    "подать доклад",
+    "программа",
+    "спикеры",
+    "program",
+    "speakers",
+}
+SPEAKER_NOISE_PARTS = (
+    "ticket",
+    "register",
+    "registration",
+    "buy ticket",
+    "submit",
+    "доклад",
+    "билет",
+)
+ORG_WORDS = {
+    "university",
+    "institute",
+    "electronics",
+    "laboratory",
+    "labs",
+    "tech",
+    "school",
+    "cloud",
+    "forum",
+    "conference",
+    "softline",
+    "samsung",
+    "carnegie",
+    "mellon",
+}
 SPONSOR_SECTION_KEYWORDS = ("sponsor", "partner", "спонсор", "партнер")
 SPONSOR_NOISE_EXACT = {
     "спикеры",
@@ -114,6 +151,21 @@ def _heading_text(node: Tag) -> str:
 
 def _normalize_text(text: str) -> str:
     return " ".join(text.split()).strip()
+
+
+def _is_probably_speaker_name(value: str) -> bool:
+    normalized = _normalize_text(value)
+    lowered = normalized.lower()
+    if not NAME_RE.match(normalized):
+        return False
+    if lowered in SPEAKER_NOISE_EXACT:
+        return False
+    if any(part in lowered for part in SPEAKER_NOISE_PARTS):
+        return False
+    tokens = [token.lower() for token in normalized.split()]
+    if all(token in ORG_WORDS for token in tokens):
+        return False
+    return True
 
 
 def _is_probably_sponsor_name(value: str) -> bool:
@@ -200,7 +252,7 @@ def _extract_speakers(soup: BeautifulSoup) -> list[SpeakerResult]:
             name_node = node.select_one(selector)
             if name_node:
                 text = name_node.get_text(" ", strip=True)
-                if NAME_RE.match(text):
+                if _is_probably_speaker_name(text):
                     name_text = text
                     break
 
@@ -208,7 +260,7 @@ def _extract_speakers(soup: BeautifulSoup) -> list[SpeakerResult]:
             text = node.get_text(" ", strip=True)
             for chunk in re.split(r"[\n\r]+|(?<=\.)\s+", text):
                 chunk = chunk.strip()
-                if NAME_RE.match(chunk):
+                if _is_probably_speaker_name(chunk):
                     name_text = chunk
                     break
 
