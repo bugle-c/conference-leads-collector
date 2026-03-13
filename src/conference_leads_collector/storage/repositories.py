@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from conference_leads_collector.storage.models import (
+    ActivityEvent,
     ConferenceSource,
     CrawlJob,
     DiscoveredPage,
@@ -236,3 +237,21 @@ class TenchatProfileRepository:
 
     def list_profiles(self) -> list[TenchatProfile]:
         return list(self.session.scalars(select(TenchatProfile).order_by(TenchatProfile.id.asc())))
+
+
+class ActivityEventRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def add_event(self, title: str, details: str | None = None, level: str = "info") -> ActivityEvent:
+        event = ActivityEvent(level=level, title=title, details=details)
+        self.session.add(event)
+        self.session.flush()
+        return event
+
+    def list_recent(self, limit: int = 20) -> list[ActivityEvent]:
+        return list(
+            self.session.scalars(
+                select(ActivityEvent).order_by(ActivityEvent.created_at.desc(), ActivityEvent.id.desc()).limit(limit)
+            )
+        )

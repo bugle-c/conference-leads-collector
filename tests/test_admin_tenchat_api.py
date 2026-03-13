@@ -59,6 +59,11 @@ async def test_discover_tenchat_profiles_from_public_search(tmp_path: Path) -> N
         assert response.status_code == 200
         assert response.json()["profiles_found"] == 1
 
+        dashboard_response = await client.get("/", headers={"Authorization": f"Bearer {token}"})
+        assert dashboard_response.status_code == 200
+        assert "Запущен поиск TenChat по 1 запросам" in dashboard_response.text
+        assert "Поиск TenChat завершён: добавлено 1 профилей" in dashboard_response.text
+
         page_response = await client.get("/tenchat", headers={"Authorization": f"Bearer {token}"})
         assert page_response.status_code == 200
         assert "Jane Smith" in page_response.text

@@ -7,7 +7,7 @@ import httpx
 
 from conference_leads_collector.extractors.tenchat import extract_public_profile_urls, extract_tenchat_profile
 from conference_leads_collector.storage.db import session_scope
-from conference_leads_collector.storage.repositories import TenchatProfileRepository
+from conference_leads_collector.storage.repositories import ActivityEventRepository, TenchatProfileRepository
 
 
 class TenchatFetcher(Protocol):
@@ -30,6 +30,11 @@ def discover_tenchat_profiles(engine, queries: list[str], fetcher: TenchatFetche
     total = 0
     with session_scope(engine) as session:
         repo = TenchatProfileRepository(session)
+        events = ActivityEventRepository(session)
+        events.add_event(
+            f"Запущен поиск TenChat по {len(queries)} запросам",
+            ", ".join(queries[:5]) if queries else "Список запросов пуст",
+        )
         for query in queries:
             search_html = active_fetcher.search(query)
             for profile_url in extract_public_profile_urls(search_html):
@@ -48,4 +53,8 @@ def discover_tenchat_profiles(engine, queries: list[str], fetcher: TenchatFetche
                     raw_fragment=profile.raw_fragment,
                 )
                 total += 1
+        events.add_event(
+            f"Поиск TenChat завершён: добавлено {total} профилей",
+            f"Обработано запросов: {len(queries)}",
+        )
     return total

@@ -81,6 +81,34 @@
       </div>
       <pre id="result-box" class="result-box">Пока действий не было.</pre>
     </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h2>Журнал действий</h2>
+          <p>Понятная лента событий, чтобы сразу видеть, что уже запущено и чем всё закончилось.</p>
+        </div>
+      </div>
+      {% if activity_events %}
+        <div style="display:grid; gap:12px;">
+          {% for event in activity_events %}
+            <article style="padding:18px 20px; border:1px solid var(--line); border-radius:18px; background:rgba(255,255,255,0.72);">
+              <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+                <div>
+                  <div style="font-size:16px; line-height:1.4;">{{ event.title }}</div>
+                  {% if event.details %}
+                    <div class="page-note">{{ event.details }}</div>
+                  {% endif %}
+                </div>
+                <span class="status-pill">{{ "Ошибка" if event.level == "error" else "Готово" }}</span>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">Пока нет событий. После первого действия журнал начнёт заполняться автоматически.</div>
+      {% endif %}
+    </section>
   </section>
 {% endblock %}
 

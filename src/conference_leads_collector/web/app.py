@@ -13,7 +13,12 @@ from conference_leads_collector.config import AppSettings
 from conference_leads_collector.services.worker import process_next_job
 from conference_leads_collector.services.tenchat import discover_tenchat_profiles
 from conference_leads_collector.storage.db import create_engine, create_schema, session_scope
-from conference_leads_collector.storage.repositories import ConferenceSourceRepository, JobRepository, TenchatProfileRepository
+from conference_leads_collector.storage.repositories import (
+    ActivityEventRepository,
+    ConferenceSourceRepository,
+    JobRepository,
+    TenchatProfileRepository,
+)
 
 
 def _require_token(authorization: str | None, settings: AppSettings, query_token: str | None = None) -> dict:
@@ -49,11 +54,13 @@ def create_app(settings: AppSettings, engine=None, fetcher=None) -> FastAPI:
             sources = ConferenceSourceRepository(session).list_sources()
             jobs = JobRepository(session).list_jobs()
             tenchat_profiles = TenchatProfileRepository(session).list_profiles()
+            activity_events = ActivityEventRepository(session).list_recent()
             return {
                 "page_title": "Панель сбора конференций",
                 "sources": sources,
                 "jobs": jobs,
                 "tenchat_profiles": tenchat_profiles,
+                "activity_events": activity_events,
                 "sources_count": len(sources),
                 "jobs_count": len(jobs),
                 "speakers_count": sum(len(source.speakers) for source in sources),
@@ -102,10 +109,15 @@ def create_app(settings: AppSettings, engine=None, fetcher=None) -> FastAPI:
         with session_scope(app.state.engine) as session:
             sources_repo = ConferenceSourceRepository(session)
             jobs_repo = JobRepository(session)
+            events_repo = ActivityEventRepository(session)
             result = sources_repo.import_seed_urls(urls)
             for source in sources_repo.list_sources_by_urls(urls):
                 if source.status == "pending":
                     jobs_repo.enqueue_crawl(source.id)
+            events_repo.add_event(
+                f"Импортировано {result['inserted']} новых конференций",
+                f"Пропущено дублей: {result['skipped']}",
+            )
         return result
 
     @app.post("/api/jobs/run-once")

@@ -27,3 +27,4 @@
 - In Dokploy containers, templates are not available inside the installed wheel by default; the web app must fall back to `/app/src/conference_leads_collector/web/templates`, which is copied into the runtime image.
 - Admin navigation should preserve the `token` query parameter between pages; the current UI relies on query-token access for direct browser navigation, while API calls still use `Authorization: Bearer`.
 - Current admin visual style is a Russian-language monochrome layout with a shared base template and restrained Apple-like spacing/typography instead of raw standalone tables.
+- Human-readable action logging is stored in the `activity_events` table and shown on the dashboard as the primary operator feedback layer for imports, worker runs, TenChat discovery, empty queues, and failures.

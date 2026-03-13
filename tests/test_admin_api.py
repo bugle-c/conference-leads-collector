@@ -62,6 +62,12 @@ async def test_import_sources_and_run_worker_once(tmp_path: Path) -> None:
         assert run_response.status_code == 200
         assert run_response.json() == {"processed": True}
 
+        dashboard_response = await client.get("/", headers={"Authorization": f"Bearer {token}"})
+        assert dashboard_response.status_code == 200
+        assert "Импортировано 1 новых конференций" in dashboard_response.text
+        assert "Запущена обработка конференции https://example.com/conf" in dashboard_response.text
+        assert "Обработка https://example.com/conf завершена: 1 спикеров, 0 спонсоров" in dashboard_response.text
+
         page_response = await client.get("/sources", headers={"Authorization": f"Bearer {token}"})
         assert page_response.status_code == 200
         assert "https://example.com/conf" in page_response.text
