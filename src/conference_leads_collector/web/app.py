@@ -39,7 +39,10 @@ def create_app(settings: AppSettings, engine=None, fetcher=None) -> FastAPI:
     app.state.engine = engine or create_engine(settings.database_url)
     app.state.fetcher = fetcher
     create_schema(app.state.engine)
-    templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+    package_templates_dir = Path(__file__).parent / "templates"
+    source_templates_dir = Path("/app/src/conference_leads_collector/web/templates")
+    templates_dir = package_templates_dir if package_templates_dir.exists() else source_templates_dir
+    templates = Jinja2Templates(directory=str(templates_dir))
 
     def _load_dashboard_context() -> dict:
         with session_scope(app.state.engine) as session:

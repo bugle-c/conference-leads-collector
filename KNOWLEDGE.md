@@ -24,3 +24,4 @@
 - Current admin is intentionally server-rendered HTML plus small inline JS actions for seed import, worker run-once, and TenChat discovery.
 - Dokploy build image should stay on plain `python:3.12-slim` without `apt-get install build-essential curl`; current dependency set uses binary wheels and does not need system toolchains.
 - `httpx` is a runtime dependency because TenChat discovery/parsing imports it from the application package; keeping it in `dev` breaks container startup.
+- In Dokploy containers, templates are not available inside the installed wheel by default; the web app must fall back to `/app/src/conference_leads_collector/web/templates`, which is copied into the runtime image.
