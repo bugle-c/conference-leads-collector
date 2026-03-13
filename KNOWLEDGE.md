@@ -31,3 +31,4 @@
 - Conference crawling is no longer limited to the seed page: the worker now discovers relevant internal pages (`speakers`, `program`, `agenda`, `archive`, `experts`, `committee`, `sessions`, `tracks` and Russian variants), fetches several candidates on the same domain, and keeps the richest extraction result instead of trusting a JS-heavy showcase page.
 - Dashboard worker controls must support batch execution (`run-once`, `run 10`, `run all`) because one-job-per-click is unusable for real conference imports.
 - Sponsor extraction must aggressively drop navigation/CTA noise (`Спикеры`, `Программа`, emails, generic links, long prose); noise-only pages should fail the job instead of being marked as successfully crawled.
+- AI Gateway balance in the dashboard is loaded from Vercel's official `/v1/credits` endpoint via `CLC_AI_GATEWAY_API_KEY`; that API exposes `balance` and `total_used`, but not a true current-month spend figure.

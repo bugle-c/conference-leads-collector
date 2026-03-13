@@ -68,3 +68,32 @@ async def test_dashboard_accepts_valid_jwt_token_from_query_param() -> None:
         assert response.status_code == 200
         assert "Панель сбора конференций" in response.text
         assert f'/sources?token={token}' in response.text
+
+
+@pytest.mark.anyio
+async def test_dashboard_shows_ai_gateway_credits() -> None:
+    settings = build_settings()
+    token = jwt.encode(
+        {"sub": "admin", "exp": int(time.time()) + 3600},
+        settings.admin_jwt_secret,
+        algorithm="HS256",
+    )
+    transport = httpx.ASGITransport(
+        app=create_app(
+            settings,
+            ai_credits_provider=lambda _settings: {
+                "enabled": True,
+                "balance": "$42.10",
+                "total_used": "$7.90",
+                "month_used": None,
+                "error": None,
+            },
+        )
+    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/", headers={"Authorization": f"Bearer {token}"})
+
+        assert response.status_code == 200
+        assert "Баланс AI" in response.text
+        assert "$42.10" in response.text
+        assert "$7.90" in response.text

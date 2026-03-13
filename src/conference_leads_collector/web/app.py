@@ -10,6 +10,7 @@ import jwt
 from jwt import InvalidTokenError
 
 from conference_leads_collector.config import AppSettings
+from conference_leads_collector.services.ai_gateway import fetch_ai_gateway_credits
 from conference_leads_collector.services.worker import process_next_job
 from conference_leads_collector.services.tenchat import discover_tenchat_profiles
 from conference_leads_collector.storage.db import create_engine, create_schema, session_scope
@@ -39,10 +40,11 @@ def _require_token(authorization: str | None, settings: AppSettings, query_token
         raise HTTPException(status_code=401, detail="Invalid bearer token") from exc
 
 
-def create_app(settings: AppSettings, engine=None, fetcher=None) -> FastAPI:
+def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_provider=None) -> FastAPI:
     app = FastAPI(title="Conference Leads Collector")
     app.state.engine = engine or create_engine(settings.database_url)
     app.state.fetcher = fetcher
+    app.state.ai_credits_provider = ai_credits_provider or fetch_ai_gateway_credits
     create_schema(app.state.engine)
     package_templates_dir = Path(__file__).parent / "templates"
     source_templates_dir = Path("/app/src/conference_leads_collector/web/templates")
@@ -50,6 +52,9 @@ def create_app(settings: AppSettings, engine=None, fetcher=None) -> FastAPI:
     templates = Jinja2Templates(directory=str(templates_dir))
 
     def _load_dashboard_context(token: str | None = None, current_page: str = "dashboard") -> dict:
+        ai_gateway = None
+        if current_page == "dashboard":
+            ai_gateway = app.state.ai_credits_provider(settings)
         with session_scope(app.state.engine) as session:
             sources = ConferenceSourceRepository(session).list_sources()
             jobs = JobRepository(session).list_jobs()
@@ -66,6 +71,7 @@ def create_app(settings: AppSettings, engine=None, fetcher=None) -> FastAPI:
                 "speakers_count": sum(len(source.speakers) for source in sources),
                 "sponsors_count": sum(len(source.sponsors) for source in sources),
                 "tenchat_count": len(tenchat_profiles),
+                "ai_gateway": ai_gateway,
                 "token": token,
                 "current_page": current_page,
             }

@@ -34,10 +34,27 @@
           <span class="stat-label">Спонсоры</span>
           <span class="stat-value mono">{{ sponsors_count }}</span>
         </div>
+        <div class="stat-card">
+          <span class="stat-label">Баланс AI</span>
+          <span class="stat-value mono">{{ ai_gateway.balance if ai_gateway and ai_gateway.balance else "—" }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Потрачено AI</span>
+          <span class="stat-value mono">{{ ai_gateway.total_used if ai_gateway and ai_gateway.total_used else "—" }}</span>
+        </div>
         <div class="stat-card" style="grid-column: 1 / -1;">
           <span class="stat-label">Профили TenChat</span>
           <span class="stat-value mono">{{ tenchat_count }}</span>
         </div>
+      </div>
+      <div class="page-note" style="margin-top: 14px;">
+        {% if ai_gateway and ai_gateway.error %}
+          {{ ai_gateway.error }}
+        {% elif ai_gateway and ai_gateway.enabled %}
+          За месяц AI Gateway сейчас не отдаёт отдельный показатель. В интерфейсе показано общее списание по данным `/credits`.
+        {% else %}
+          AI Gateway пока не подключён. Добавь ключ в окружение, и баланс появится здесь автоматически.
+        {% endif %}
       </div>
     </aside>
   </section>

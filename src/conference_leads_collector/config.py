@@ -10,6 +10,8 @@ class AppSettings:
     admin_jwt_secret: str
     database_url: str
     redis_url: str
+    ai_gateway_api_key: str | None = None
+    ai_gateway_base_url: str = "https://ai-gateway.vercel.sh/v1"
     host: str = "0.0.0.0"
     port: int = 8080
 
@@ -37,6 +39,8 @@ class AppSettings:
             admin_jwt_secret=admin_jwt_secret,
             database_url=database_url,
             redis_url=redis_url,
+            ai_gateway_api_key=os.getenv("CLC_AI_GATEWAY_API_KEY") or None,
+            ai_gateway_base_url=os.getenv("CLC_AI_GATEWAY_BASE_URL", "https://ai-gateway.vercel.sh/v1").rstrip("/"),
             host=os.getenv("CLC_HOST", "0.0.0.0"),
             port=int(os.getenv("CLC_PORT", "8080")),
         )
