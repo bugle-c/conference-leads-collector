@@ -38,12 +38,12 @@ def cmd_run_worker(settings: AppSettings, once: bool) -> int:
     engine = create_engine(settings.database_url)
     create_schema(engine)
     if once:
-        processed = process_next_job(engine)
+        processed = process_next_job(engine, settings=settings)
         print({"processed": processed})
         return 0
 
     while True:
-        processed = process_next_job(engine)
+        processed = process_next_job(engine, settings=settings)
         if not processed:
             break
     return 0
