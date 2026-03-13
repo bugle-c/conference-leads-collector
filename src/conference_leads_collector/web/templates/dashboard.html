@@ -1,67 +1,134 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>Conference Leads Collector</title>
-    <style>
-      body { font-family: sans-serif; margin: 24px; }
-      .stats { display: flex; gap: 16px; margin-bottom: 24px; }
-      .card { border: 1px solid #ddd; padding: 12px 16px; border-radius: 8px; min-width: 140px; }
-      a { color: #0b57d0; text-decoration: none; }
-    </style>
-  </head>
-  <body>
-    <h1>Conference Leads Collector</h1>
-    <div class="stats">
-      <div class="card">Sources: {{ sources_count }}</div>
-      <div class="card">Jobs: {{ jobs_count }}</div>
-      <div class="card">Speakers: {{ speakers_count }}</div>
-      <div class="card">Sponsors: {{ sponsors_count }}</div>
-      <div class="card">TenChat: {{ tenchat_count }}</div>
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="hero">
+    <article class="hero-card">
+      <div class="eyebrow">Панель оператора</div>
+      <h1>Панель сбора конференций</h1>
+      <p class="lead">
+        Собирай спикеров, спонсоров и профили TenChat в одном интерфейсе. Панель рассчитана на спокойную
+        ручную работу: импорт исходных URL, запуск задач и быстрый контроль результата без лишнего шума.
+      </p>
+      <div class="hero-meta">
+        <div class="meta-pill">Русский интерфейс</div>
+        <div class="meta-pill">JWT-доступ активен</div>
+        <div class="meta-pill">Минималистичный рабочий режим</div>
+      </div>
+    </article>
+
+    <aside class="hero-card">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-label">Конференции</span>
+          <span class="stat-value mono">{{ sources_count }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Задачи</span>
+          <span class="stat-value mono">{{ jobs_count }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Спикеры</span>
+          <span class="stat-value mono">{{ speakers_count }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Спонсоры</span>
+          <span class="stat-value mono">{{ sponsors_count }}</span>
+        </div>
+        <div class="stat-card" style="grid-column: 1 / -1;">
+          <span class="stat-label">Профили TenChat</span>
+          <span class="stat-value mono">{{ tenchat_count }}</span>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="content-grid">
+    <div class="action-grid">
+      <section class="panel">
+        <h2>Загрузка конференций</h2>
+        <p>Вставь список URL по одному на строку. После импорта источники сразу попадут в рабочую базу.</p>
+        <textarea id="seed-urls" placeholder="https://aisummit.ru&#10;https://mergeconf.ru"></textarea>
+        <div class="button-row">
+          <button class="button-primary" onclick="importSeeds()">Импортировать URL</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Запуск обработки</h2>
+        <p>Выполняет одну следующую задачу из очереди. Подходит для ручной пошаговой проверки пайплайна.</p>
+        <div class="button-row">
+          <button class="button-primary" onclick="runWorker()">Запустить один шаг</button>
+          <a class="ghost-link" href="/jobs?token={{ token or '' }}">Открыть очередь</a>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Поиск TenChat</h2>
+        <p>Запусти discovery по маркетинговым ролям и публичным профилям. Один запрос на строку.</p>
+        <textarea id="tenchat-queries" placeholder="директор по маркетингу&#10;head of marketing"></textarea>
+        <div class="button-row">
+          <button class="button-primary" onclick="discoverTenchat()">Запустить поиск</button>
+        </div>
+      </section>
     </div>
-    <p><a href="/sources">Sources</a> | <a href="/jobs">Jobs</a> | <a href="/tenchat">TenChat</a></p>
 
-    <h2>Import Conference Seeds</h2>
-    <textarea id="seed-urls" rows="8" cols="100" placeholder="https://aisummit.ru&#10;https://mergeconf.ru"></textarea>
-    <br>
-    <button onclick="importSeeds()">Import Seeds</button>
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <h2>Результат последнего действия</h2>
+          <p>Сюда выводится ответ API после импорта, запуска worker или поиска TenChat.</p>
+        </div>
+      </div>
+      <pre id="result-box" class="result-box">Пока действий не было.</pre>
+    </section>
+  </section>
+{% endblock %}
 
-    <h2>Run Conference Worker</h2>
-    <button onclick="runWorker()">Run Once</button>
-
-    <h2>Discover TenChat Profiles</h2>
-    <textarea id="tenchat-queries" rows="4" cols="100" placeholder="директор по маркетингу&#10;head of marketing"></textarea>
-    <br>
-    <button onclick="discoverTenchat()">Run TenChat Discovery</button>
-
-    <pre id="result-box"></pre>
-
-    <script>
-      async function authHeaders() {
-        const token = localStorage.getItem("clc_token") || prompt("Paste JWT token");
-        if (token) localStorage.setItem("clc_token", token);
-        return { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+{% block scripts %}
+  <script>
+    async function authHeaders() {
+      const params = new URLSearchParams(window.location.search);
+      const queryToken = params.get("token");
+      const savedToken = localStorage.getItem("clc_token");
+      const token = queryToken || savedToken || prompt("Вставь JWT токен");
+      if (token) {
+        localStorage.setItem("clc_token", token);
+        if (!queryToken) {
+          params.set("token", token);
+          window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
+        }
       }
+      return { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+    }
 
-      async function importSeeds() {
-        const urls = document.getElementById("seed-urls").value.split(/\n+/).map(v => v.trim()).filter(Boolean);
-        const headers = await authHeaders();
-        const response = await fetch("/api/sources/import", { method: "POST", headers, body: JSON.stringify({ urls }) });
-        document.getElementById("result-box").textContent = JSON.stringify(await response.json(), null, 2);
+    async function handleResponse(response) {
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = { ok: response.ok, status: response.status };
       }
+      document.getElementById("result-box").textContent = JSON.stringify(payload, null, 2);
+    }
 
-      async function runWorker() {
-        const headers = await authHeaders();
-        const response = await fetch("/api/jobs/run-once", { method: "POST", headers });
-        document.getElementById("result-box").textContent = JSON.stringify(await response.json(), null, 2);
-      }
+    async function importSeeds() {
+      const urls = document.getElementById("seed-urls").value.split(/\n+/).map(v => v.trim()).filter(Boolean);
+      const headers = await authHeaders();
+      const response = await fetch("/api/sources/import", { method: "POST", headers, body: JSON.stringify({ urls }) });
+      await handleResponse(response);
+    }
 
-      async function discoverTenchat() {
-        const queries = document.getElementById("tenchat-queries").value.split(/\n+/).map(v => v.trim()).filter(Boolean);
-        const headers = await authHeaders();
-        const response = await fetch("/api/tenchat/discover", { method: "POST", headers, body: JSON.stringify({ queries }) });
-        document.getElementById("result-box").textContent = JSON.stringify(await response.json(), null, 2);
-      }
-    </script>
-  </body>
-</html>
+    async function runWorker() {
+      const headers = await authHeaders();
+      const response = await fetch("/api/jobs/run-once", { method: "POST", headers });
+      await handleResponse(response);
+    }
+
+    async function discoverTenchat() {
+      const queries = document.getElementById("tenchat-queries").value.split(/\n+/).map(v => v.trim()).filter(Boolean);
+      const headers = await authHeaders();
+      const response = await fetch("/api/tenchat/discover", { method: "POST", headers, body: JSON.stringify({ queries }) });
+      await handleResponse(response);
+    }
+  </script>
+{% endblock %}

@@ -50,7 +50,7 @@ async def test_dashboard_accepts_valid_jwt_token() -> None:
         response = await client.get("/", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 200
-        assert "Conference Leads Collector" in response.text
+        assert "Панель сбора конференций" in response.text
 
 
 @pytest.mark.anyio
@@ -66,4 +66,5 @@ async def test_dashboard_accepts_valid_jwt_token_from_query_param() -> None:
         response = await client.get(f"/?token={token}")
 
         assert response.status_code == 200
-        assert "Conference Leads Collector" in response.text
+        assert "Панель сбора конференций" in response.text
+        assert f'/sources?token={token}' in response.text

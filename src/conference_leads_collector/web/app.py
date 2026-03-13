@@ -44,12 +44,13 @@ def create_app(settings: AppSettings, engine=None, fetcher=None) -> FastAPI:
     templates_dir = package_templates_dir if package_templates_dir.exists() else source_templates_dir
     templates = Jinja2Templates(directory=str(templates_dir))
 
-    def _load_dashboard_context() -> dict:
+    def _load_dashboard_context(token: str | None = None, current_page: str = "dashboard") -> dict:
         with session_scope(app.state.engine) as session:
             sources = ConferenceSourceRepository(session).list_sources()
             jobs = JobRepository(session).list_jobs()
             tenchat_profiles = TenchatProfileRepository(session).list_profiles()
             return {
+                "page_title": "Панель сбора конференций",
                 "sources": sources,
                 "jobs": jobs,
                 "tenchat_profiles": tenchat_profiles,
@@ -58,6 +59,8 @@ def create_app(settings: AppSettings, engine=None, fetcher=None) -> FastAPI:
                 "speakers_count": sum(len(source.speakers) for source in sources),
                 "sponsors_count": sum(len(source.sponsors) for source in sources),
                 "tenchat_count": len(tenchat_profiles),
+                "token": token,
+                "current_page": current_page,
             }
 
     @app.get("/api/health")
@@ -67,25 +70,29 @@ def create_app(settings: AppSettings, engine=None, fetcher=None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request, authorization: str | None = Header(default=None), token: str | None = None):
         _require_token(authorization, settings, query_token=token)
-        context = _load_dashboard_context()
+        context = _load_dashboard_context(token=token, current_page="dashboard")
+        context["request"] = request
         return templates.TemplateResponse(request, "dashboard.html", context)
 
     @app.get("/sources", response_class=HTMLResponse)
     async def sources_page(request: Request, authorization: str | None = Header(default=None), token: str | None = None):
         _require_token(authorization, settings, query_token=token)
-        context = _load_dashboard_context()
+        context = _load_dashboard_context(token=token, current_page="sources")
+        context["request"] = request
         return templates.TemplateResponse(request, "sources.html", context)
 
     @app.get("/jobs", response_class=HTMLResponse)
     async def jobs_page(request: Request, authorization: str | None = Header(default=None), token: str | None = None):
         _require_token(authorization, settings, query_token=token)
-        context = _load_dashboard_context()
+        context = _load_dashboard_context(token=token, current_page="jobs")
+        context["request"] = request
         return templates.TemplateResponse(request, "jobs.html", context)
 
     @app.get("/tenchat", response_class=HTMLResponse)
     async def tenchat_page(request: Request, authorization: str | None = Header(default=None), token: str | None = None):
         _require_token(authorization, settings, query_token=token)
-        context = _load_dashboard_context()
+        context = _load_dashboard_context(token=token, current_page="tenchat")
+        context["request"] = request
         return templates.TemplateResponse(request, "tenchat.html", context)
 
     @app.post("/api/sources/import")

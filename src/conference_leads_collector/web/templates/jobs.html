@@ -1,38 +1,49 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>Jobs</title>
-    <style>
-      body { font-family: sans-serif; margin: 24px; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-      th { text-align: left; background: #f6f6f6; }
-    </style>
-  </head>
-  <body>
-    <h1>Jobs</h1>
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Type</th>
-          <th>Target</th>
-          <th>Status</th>
-          <th>Error</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for job in jobs %}
-        <tr>
-          <td>{{ job.id }}</td>
-          <td>{{ job.job_type }}</td>
-          <td>{{ job.target_id }}</td>
-          <td>{{ job.status }}</td>
-          <td>{{ job.last_error or "" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </body>
-</html>
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="hero" style="grid-template-columns: minmax(0, 1fr);">
+    <article class="hero-card">
+      <div class="eyebrow">Очередь</div>
+      <h1>Задачи обработки</h1>
+      <p class="lead">
+        Технический обзор очереди: тип задачи, целевой объект, текущий статус и последняя ошибка, если она была.
+      </p>
+    </article>
+  </section>
+
+  <section class="section-head">
+    <div>
+      <h2>Журнал задач</h2>
+      <p>Используй эту страницу для контроля повторов, падений и ручного прогона пайплайна.</p>
+    </div>
+  </section>
+
+  <section class="table-shell">
+    {% if jobs %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Тип</th>
+            <th>Цель</th>
+            <th>Статус</th>
+            <th>Ошибка</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for job in jobs %}
+            <tr>
+              <td class="mono">{{ job.id }}</td>
+              <td>{{ job.job_type }}</td>
+              <td class="mono">{{ job.target_id }}</td>
+              <td><span class="status-pill">{{ job.status }}</span></td>
+              <td>{{ job.last_error or "Без ошибок" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty-state">Очередь пока пуста. После импорта конференций задачи появятся автоматически.</div>
+    {% endif %}
+  </section>
+{% endblock %}
