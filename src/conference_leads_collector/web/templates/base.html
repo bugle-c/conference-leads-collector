@@ -112,6 +112,13 @@
         color: #ffffff;
       }
 
+      .nav-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
       .hero {
         display: grid;
         grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
@@ -309,9 +316,14 @@
         overflow: hidden;
       }
 
+      .table-scroll {
+        overflow-x: auto;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
+        table-layout: fixed;
       }
 
       th, td {
@@ -375,6 +387,37 @@
         font-size: 14px;
       }
 
+      .text-wrap {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      .cell-stack {
+        display: grid;
+        gap: 8px;
+      }
+
+      .mini-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .mini-item {
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: rgba(17, 17, 17, 0.035);
+        overflow-wrap: anywhere;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+
       @media (max-width: 1100px) {
         .hero, .action-grid { grid-template-columns: 1fr; }
       }
@@ -404,10 +447,14 @@
           </div>
         </div>
         <nav class="nav">
-          <a class="nav-link {% if current_page == 'dashboard' %}active{% endif %}" href="/?token={{ token or '' }}">Обзор</a>
-          <a class="nav-link {% if current_page == 'sources' %}active{% endif %}" href="/sources?token={{ token or '' }}">Конференции</a>
-          <a class="nav-link {% if current_page == 'jobs' %}active{% endif %}" href="/jobs?token={{ token or '' }}">Очередь</a>
-          <a class="nav-link {% if current_page == 'tenchat' %}active{% endif %}" href="/tenchat?token={{ token or '' }}">TenChat</a>
+          <div class="nav-group">
+            <a class="nav-link {% if current_page == 'dashboard' %}active{% endif %}" href="/?token={{ token or '' }}">Обзор</a>
+            <a class="nav-link {% if current_page == 'sources' %}active{% endif %}" href="/sources?token={{ token or '' }}">Конференции</a>
+            <a class="nav-link {% if current_page == 'speakers' %}active{% endif %}" href="/speakers?token={{ token or '' }}">Спикеры</a>
+            <a class="nav-link {% if current_page == 'sponsors' %}active{% endif %}" href="/sponsors?token={{ token or '' }}">Спонсоры</a>
+            <a class="nav-link {% if current_page == 'jobs' %}active{% endif %}" href="/jobs?token={{ token or '' }}">Очередь</a>
+            <a class="nav-link {% if current_page == 'tenchat' %}active{% endif %}" href="/tenchat?token={{ token or '' }}">TenChat</a>
+          </div>
         </nav>
       </header>
       {% block content %}{% endblock %}

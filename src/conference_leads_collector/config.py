@@ -12,6 +12,7 @@ class AppSettings:
     redis_url: str
     ai_gateway_api_key: str | None = None
     ai_gateway_base_url: str = "https://ai-gateway.vercel.sh/v1"
+    ai_gateway_model: str = "openai/gpt-4.1-mini"
     host: str = "0.0.0.0"
     port: int = 8080
 
@@ -41,6 +42,7 @@ class AppSettings:
             redis_url=redis_url,
             ai_gateway_api_key=os.getenv("CLC_AI_GATEWAY_API_KEY") or None,
             ai_gateway_base_url=os.getenv("CLC_AI_GATEWAY_BASE_URL", "https://ai-gateway.vercel.sh/v1").rstrip("/"),
+            ai_gateway_model=os.getenv("CLC_AI_GATEWAY_MODEL", "openai/gpt-4.1-mini"),
             host=os.getenv("CLC_HOST", "0.0.0.0"),
             port=int(os.getenv("CLC_PORT", "8080")),
         )

@@ -20,6 +20,7 @@
 
   <section class="table-shell">
     {% if jobs %}
+      <div class="table-scroll">
       <table>
         <thead>
           <tr>
@@ -37,11 +38,12 @@
               <td>{{ job.job_type }}</td>
               <td class="mono">{{ job.target_id }}</td>
               <td><span class="status-pill">{{ job.status }}</span></td>
-              <td>{{ job.last_error or "Без ошибок" }}</td>
+              <td class="text-wrap">{{ job.last_error or "Без ошибок" }}</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="empty-state">Очередь пока пуста. После импорта конференций задачи появятся автоматически.</div>
     {% endif %}

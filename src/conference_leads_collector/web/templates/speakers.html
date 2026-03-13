@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="hero" style="grid-template-columns: minmax(0, 1fr);">
+    <article class="hero-card">
+      <div class="eyebrow">Спикеры</div>
+      <h1>Таблица спикеров</h1>
+      <p class="lead">
+        Нормальная рабочая таблица под ТЗ: имя, фамилия, регалии и должность, конференция. Без перегруженной страницы источников.
+      </p>
+    </article>
+  </section>
+
+  <section class="table-shell">
+    <div class="toolbar">
+      <div>
+        <h2 style="margin:0;">Все найденные спикеры</h2>
+        <div class="page-note">Скачивание вынесено в отдельный CSV, чтобы можно было сразу работать с таблицей.</div>
+      </div>
+      <div class="button-row">
+        <a class="ghost-link" href="/exports/speakers.csv?token={{ token or '' }}">Скачать CSV</a>
+      </div>
+    </div>
+    {% if speaker_rows %}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Имя</th>
+              <th>Фамилия</th>
+              <th>Регалии и должность</th>
+              <th>Компания</th>
+              <th>Конференция</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in speaker_rows %}
+              <tr>
+                <td>{{ row.first_name or "—" }}</td>
+                <td>{{ row.last_name or "—" }}</td>
+                <td class="text-wrap">{{ row.regalia_raw or row.title or "—" }}</td>
+                <td class="text-wrap">{{ row.company or "—" }}</td>
+                <td class="text-wrap">{{ row.conference }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">Спикеры пока не собраны.</div>
+    {% endif %}
+  </section>
+{% endblock %}

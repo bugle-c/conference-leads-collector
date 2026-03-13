@@ -14,12 +14,20 @@
   <section class="section-head">
     <div>
       <h2>Список конференций</h2>
-      <p>Каждая строка показывает один seed URL, текущий статус обработки и найденные сущности.</p>
+      <p>Здесь только обзор: статус, количество найденного и короткий preview. Детали вынесены в отдельные таблицы.</p>
     </div>
   </section>
 
   <section class="table-shell">
+    <div class="toolbar">
+      <div class="page-note">Списки спикеров и спонсоров больше не разваливают таблицу конференций.</div>
+      <div class="button-row">
+        <a class="ghost-link" href="/speakers?token={{ token or '' }}">Спикеры</a>
+        <a class="ghost-link" href="/sponsors?token={{ token or '' }}">Спонсоры</a>
+      </div>
+    </div>
     {% if sources %}
+      <div class="table-scroll">
       <table>
         <thead>
           <tr>
@@ -27,41 +35,43 @@
             <th>Статус</th>
             <th>Спикеры</th>
             <th>Спонсоры</th>
+            <th>Preview</th>
           </tr>
         </thead>
         <tbody>
           {% for source in sources %}
             <tr>
               <td>
-                <div>{{ source.seed_url }}</div>
+                <div class="cell-stack">
+                  <div class="text-wrap">{{ source.seed_url }}</div>
+                  <div class="page-note">Последний обход: {{ source.last_crawled_at or "ещё не запускался" }}</div>
+                </div>
               </td>
               <td><span class="status-pill">{{ source.status }}</span></td>
+              <td class="mono">{{ source.speakers|length }}</td>
+              <td class="mono">{{ source.sponsors|length }}</td>
               <td>
-                {% if source.speakers %}
-                  <ul class="list-compact">
-                    {% for speaker in source.speakers %}
-                      <li>{{ speaker.full_name }}</li>
+                <div class="mini-list">
+                  {% if source.speakers %}
+                    {% for speaker in source.speakers[:3] %}
+                      <div class="mini-item">{{ speaker.full_name }}</div>
                     {% endfor %}
-                  </ul>
-                {% else %}
-                  <span class="muted">Пока пусто</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if source.sponsors %}
-                  <ul class="list-compact">
-                    {% for sponsor in source.sponsors %}
-                      <li>{{ sponsor.name }}</li>
+                  {% endif %}
+                  {% if source.sponsors %}
+                    {% for sponsor in source.sponsors[:3] %}
+                      <div class="mini-item">{{ sponsor.name }}</div>
                     {% endfor %}
-                  </ul>
-                {% else %}
-                  <span class="muted">Пока пусто</span>
-                {% endif %}
+                  {% endif %}
+                  {% if not source.speakers and not source.sponsors %}
+                    <span class="muted">Пока пусто</span>
+                  {% endif %}
+                </div>
               </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="empty-state">Источники ещё не загружены. Вернись в обзор и импортируй список конференций.</div>
     {% endif %}

@@ -98,3 +98,42 @@ async def test_run_batch_processes_multiple_jobs(tmp_path: Path) -> None:
         )
         assert batch_response.status_code == 200
         assert batch_response.json() == {"processed": 2, "remaining": 0}
+
+
+@pytest.mark.anyio
+async def test_speaker_and_sponsor_exports_are_downloadable(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=StubFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/sources/import",
+            json={"urls": ["https://example.com/conf"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+
+        run_response = await client.post(
+            "/api/jobs/run-once",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert run_response.status_code == 200
+
+        speakers_page = await client.get("/speakers", headers={"Authorization": f"Bearer {token}"})
+        assert speakers_page.status_code == 200
+        assert "Таблица спикеров" in speakers_page.text
+        assert "Jane" in speakers_page.text
+        assert "Smith" in speakers_page.text
+
+        speakers_export = await client.get("/exports/speakers.csv", headers={"Authorization": f"Bearer {token}"})
+        assert speakers_export.status_code == 200
+        assert "attachment; filename=\"speakers.csv\"" == speakers_export.headers["content-disposition"]
+        assert "Jane Smith" in speakers_export.text
+
+        sponsors_export = await client.get("/exports/sponsors.csv", headers={"Authorization": f"Bearer {token}"})
+        assert sponsors_export.status_code == 200
+        assert "attachment; filename=\"sponsors.csv\"" == sponsors_export.headers["content-disposition"]

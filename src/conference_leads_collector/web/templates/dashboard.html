@@ -94,6 +94,21 @@
     <section class="panel">
       <div class="section-head">
         <div>
+          <h2>Выгрузки</h2>
+          <p>Отдельные таблицы и CSV для спикеров и спонсоров без перегруженной страницы конференций.</p>
+        </div>
+      </div>
+      <div class="button-row">
+        <a class="ghost-link" href="/speakers?token={{ token or '' }}">Открыть спикеров</a>
+        <a class="ghost-link" href="/sponsors?token={{ token or '' }}">Открыть спонсоров</a>
+        <a class="ghost-link" href="/exports/speakers.csv?token={{ token or '' }}">Скачать speakers.csv</a>
+        <a class="ghost-link" href="/exports/sponsors.csv?token={{ token or '' }}">Скачать sponsors.csv</a>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
           <h2>Результат последнего действия</h2>
           <p>Сюда выводится ответ API после импорта, запуска worker или поиска TenChat.</p>
         </div>

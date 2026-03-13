@@ -245,12 +245,13 @@ def _extract_sponsors(soup: BeautifulSoup) -> list[SponsorResult]:
         if heading and not any(key in heading for key in SPONSOR_SECTION_KEYWORDS):
             continue
 
-        for card in node.select(".sponsor-card, .partner-card, .partner, .sponsor, img, span, a"):
+        explicit_cards = node.select(".sponsor-card, .partner-card, .partner, .sponsor, li")
+        cards = explicit_cards or node.select("img")
+
+        for card in cards:
             name = None
             if card.name == "img":
                 name = _normalize_text(card.get("alt") or "")
-            elif card.name == "a":
-                name = _normalize_text(card.get_text(" ", strip=True))
             else:
                 img = card.find("img")
                 if img and img.get("alt"):

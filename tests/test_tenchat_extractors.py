@@ -11,6 +11,15 @@ SEARCH_HTML = """
 </body></html>
 """
 
+SEARCH_RSS = """<?xml version="1.0" encoding="utf-8" ?>
+<rss version="2.0">
+  <channel>
+    <item><title>Jane</title><link>https://tenchat.ru/jane_smith</link></item>
+    <item><title>Post</title><link>https://tenchat.ru/post/12345</link></item>
+  </channel>
+</rss>
+"""
+
 PROFILE_HTML = """
 <html>
   <body>
@@ -26,6 +35,12 @@ def test_extract_public_profile_urls() -> None:
     urls = extract_public_profile_urls(SEARCH_HTML)
 
     assert urls == ["https://tenchat.ru/media/12345-jane-smith"]
+
+
+def test_extract_public_profile_urls_from_rss() -> None:
+    urls = extract_public_profile_urls(SEARCH_RSS)
+
+    assert urls == ["https://tenchat.ru/jane_smith", "https://tenchat.ru/post/12345"]
 
 
 def test_extract_tenchat_profile() -> None:

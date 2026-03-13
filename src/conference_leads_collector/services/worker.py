@@ -11,6 +11,8 @@ from conference_leads_collector.extractors.conferences import (
     extract_conference_data,
     score_extraction,
 )
+from conference_leads_collector.services.ai_extraction import AiConferenceRefiner
+from conference_leads_collector.config import AppSettings
 from conference_leads_collector.storage.db import session_scope
 from conference_leads_collector.storage.repositories import ActivityEventRepository, ConferenceSourceRepository, JobRepository
 
@@ -54,8 +56,11 @@ def _has_high_quality_entities(result: ConferenceExtractionResult) -> bool:
     return bool(result.speakers or result.sponsors)
 
 
-def process_next_job(engine, fetcher: Fetcher | None = None) -> bool:
+def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettings | None = None, ai_refiner=None) -> bool:
     active_fetcher = fetcher or HttpFetcher()
+    active_ai_refiner = ai_refiner
+    if active_ai_refiner is None and settings is not None:
+        active_ai_refiner = AiConferenceRefiner(settings)
     with session_scope(engine) as session:
         jobs = JobRepository(session)
         sources = ConferenceSourceRepository(session)
@@ -81,6 +86,10 @@ def process_next_job(engine, fetcher: Fetcher | None = None) -> bool:
                 f"Задача #{job.id} взята в работу",
             )
             status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
+            if active_ai_refiner is not None:
+                refined = active_ai_refiner.refine(source.seed_url, html, extracted)
+                if score_extraction(refined) >= score_extraction(extracted):
+                    extracted = refined
             if not _has_high_quality_entities(extracted):
                 jobs.mark_failed(job, "No high-quality entities found")
                 events.add_event(

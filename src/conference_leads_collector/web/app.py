@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import csv
+import io
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
 import jwt
@@ -51,6 +53,51 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
     templates_dir = package_templates_dir if package_templates_dir.exists() else source_templates_dir
     templates = Jinja2Templates(directory=str(templates_dir))
 
+    def _flatten_speakers(sources: list) -> list[dict]:
+        rows: list[dict] = []
+        for source in sources:
+            for speaker in source.speakers:
+                rows.append(
+                    {
+                        "conference": source.name or source.seed_url,
+                        "conference_url": source.seed_url,
+                        "full_name": speaker.full_name,
+                        "first_name": speaker.first_name or "",
+                        "last_name": speaker.last_name or "",
+                        "title": speaker.title or "",
+                        "company": speaker.company or "",
+                        "regalia_raw": speaker.regalia_raw or "",
+                    }
+                )
+        return rows
+
+    def _flatten_sponsors(sources: list) -> list[dict]:
+        rows: list[dict] = []
+        for source in sources:
+            for sponsor in source.sponsors:
+                rows.append(
+                    {
+                        "conference": source.name or source.seed_url,
+                        "conference_url": source.seed_url,
+                        "name": sponsor.name,
+                        "category": sponsor.category or "",
+                        "website": sponsor.website or "",
+                        "description": sponsor.description or "",
+                    }
+                )
+        return rows
+
+    def _csv_response(filename: str, fieldnames: list[str], rows: list[dict]) -> Response:
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+        return Response(
+            content=buffer.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     def _load_dashboard_context(token: str | None = None, current_page: str = "dashboard") -> dict:
         ai_gateway = None
         if current_page == "dashboard":
@@ -63,6 +110,8 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
             return {
                 "page_title": "Панель сбора конференций",
                 "sources": sources,
+                "speaker_rows": _flatten_speakers(sources),
+                "sponsor_rows": _flatten_sponsors(sources),
                 "jobs": jobs,
                 "tenchat_profiles": tenchat_profiles,
                 "activity_events": activity_events,
@@ -93,6 +142,20 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         context = _load_dashboard_context(token=token, current_page="sources")
         context["request"] = request
         return templates.TemplateResponse(request, "sources.html", context)
+
+    @app.get("/speakers", response_class=HTMLResponse)
+    async def speakers_page(request: Request, authorization: str | None = Header(default=None), token: str | None = None):
+        _require_token(authorization, settings, query_token=token)
+        context = _load_dashboard_context(token=token, current_page="speakers")
+        context["request"] = request
+        return templates.TemplateResponse(request, "speakers.html", context)
+
+    @app.get("/sponsors", response_class=HTMLResponse)
+    async def sponsors_page(request: Request, authorization: str | None = Header(default=None), token: str | None = None):
+        _require_token(authorization, settings, query_token=token)
+        context = _load_dashboard_context(token=token, current_page="sponsors")
+        context["request"] = request
+        return templates.TemplateResponse(request, "sponsors.html", context)
 
     @app.get("/jobs", response_class=HTMLResponse)
     async def jobs_page(request: Request, authorization: str | None = Header(default=None), token: str | None = None):
@@ -129,7 +192,7 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
     @app.post("/api/jobs/run-once")
     async def run_once(authorization: str | None = Header(default=None)) -> dict[str, bool]:
         _require_token(authorization, settings)
-        processed = process_next_job(app.state.engine, fetcher=app.state.fetcher)
+        processed = process_next_job(app.state.engine, fetcher=app.state.fetcher, settings=settings)
         return {"processed": processed}
 
     @app.post("/api/jobs/run-batch")
@@ -143,7 +206,7 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
 
         processed = 0
         for _ in range(limit):
-            if not process_next_job(app.state.engine, fetcher=app.state.fetcher):
+            if not process_next_job(app.state.engine, fetcher=app.state.fetcher, settings=settings):
                 break
             processed += 1
 
@@ -158,5 +221,29 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         queries = payload.get("queries", [])
         profiles_found = discover_tenchat_profiles(app.state.engine, queries, fetcher=app.state.fetcher)
         return {"profiles_found": profiles_found}
+
+    @app.get("/exports/speakers.csv")
+    async def export_speakers_csv(authorization: str | None = Header(default=None), token: str | None = None) -> Response:
+        _require_token(authorization, settings, query_token=token)
+        with session_scope(app.state.engine) as session:
+            sources = ConferenceSourceRepository(session).list_sources()
+        rows = _flatten_speakers(sources)
+        return _csv_response(
+            "speakers.csv",
+            ["conference", "conference_url", "full_name", "first_name", "last_name", "title", "company", "regalia_raw"],
+            rows,
+        )
+
+    @app.get("/exports/sponsors.csv")
+    async def export_sponsors_csv(authorization: str | None = Header(default=None), token: str | None = None) -> Response:
+        _require_token(authorization, settings, query_token=token)
+        with session_scope(app.state.engine) as session:
+            sources = ConferenceSourceRepository(session).list_sources()
+        rows = _flatten_sponsors(sources)
+        return _csv_response(
+            "sponsors.csv",
+            ["conference", "conference_url", "name", "category", "website", "description"],
+            rows,
+        )
 
     return app

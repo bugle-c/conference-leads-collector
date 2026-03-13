@@ -17,11 +17,19 @@ class TenchatFetcher(Protocol):
 
 class PublicSearchFetcher:
     def search(self, query: str) -> str:
-        url = f"https://duckduckgo.com/html/?q={quote_plus(f'site:tenchat.ru {query}')}"
-        return httpx.get(url, timeout=20.0, follow_redirects=True).text
+        query_string = quote_plus(f"site:tenchat.ru {query}")
+        headers = {"User-Agent": "Mozilla/5.0"}
+        for url in (
+            f"https://www.bing.com/search?format=rss&q={query_string}",
+            f"https://duckduckgo.com/html/?q={query_string}",
+        ):
+            response = httpx.get(url, timeout=20.0, follow_redirects=True, headers=headers)
+            if response.status_code == 200 and "anomaly.js" not in response.text and "showcaptcha" not in str(response.url):
+                return response.text
+        return ""
 
     def fetch(self, url: str) -> tuple[int, str]:
-        response = httpx.get(url, timeout=20.0, follow_redirects=True)
+        response = httpx.get(url, timeout=20.0, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
         return response.status_code, response.text
 
 
@@ -42,6 +50,10 @@ def discover_tenchat_profiles(engine, queries: list[str], fetcher: TenchatFetche
                 if status_code != 200:
                     continue
                 profile = extract_tenchat_profile(profile_url, html)
+                if not _matches_marketing_lead(profile.job_title):
+                    continue
+                if profile.followers is None or not (1000 <= profile.followers <= 3000):
+                    continue
                 repo.upsert_profile(
                     profile_url=profile.profile_url,
                     full_name=profile.full_name,
@@ -58,3 +70,12 @@ def discover_tenchat_profiles(engine, queries: list[str], fetcher: TenchatFetche
             f"Обработано запросов: {len(queries)}",
         )
     return total
+
+
+def _matches_marketing_lead(job_title: str | None) -> bool:
+    if not job_title:
+        return False
+    lowered = job_title.lower()
+    marketing_markers = ("маркет", "marketing", "cmo", "brand")
+    leadership_markers = ("директор", "head", "руковод", "chief", "lead", "vp", "вице-президент")
+    return any(part in lowered for part in marketing_markers) and any(part in lowered for part in leadership_markers)

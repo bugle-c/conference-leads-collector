@@ -20,6 +20,7 @@
 
   <section class="table-shell">
     {% if tenchat_profiles %}
+      <div class="table-scroll">
       <table>
         <thead>
           <tr>
@@ -35,11 +36,12 @@
               <td>{{ profile.full_name or "Без имени" }}</td>
               <td>{{ profile.job_title or "Не указано" }}</td>
               <td class="mono">{{ profile.followers or "—" }}</td>
-              <td><a href="{{ profile.profile_url }}" target="_blank" rel="noreferrer">{{ profile.profile_url }}</a></td>
+              <td class="text-wrap"><a href="{{ profile.profile_url }}" target="_blank" rel="noreferrer">{{ profile.profile_url }}</a></td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="empty-state">Профили ещё не найдены. Запусти поиск TenChat на главной странице.</div>
     {% endif %}

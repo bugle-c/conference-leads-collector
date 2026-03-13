@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="hero" style="grid-template-columns: minmax(0, 1fr);">
+    <article class="hero-card">
+      <div class="eyebrow">Спонсоры</div>
+      <h1>Таблица спонсоров</h1>
+      <p class="lead">
+        Отдельная таблица для компаний-партнёров и спонсоров без смешивания с меню, кнопками и длинными списками на странице конференций.
+      </p>
+    </article>
+  </section>
+
+  <section class="table-shell">
+    <div class="toolbar">
+      <div>
+        <h2 style="margin:0;">Все найденные спонсоры</h2>
+        <div class="page-note">CSV можно сразу отдать в таблицы или использовать для чистки дублей.</div>
+      </div>
+      <div class="button-row">
+        <a class="ghost-link" href="/exports/sponsors.csv?token={{ token or '' }}">Скачать CSV</a>
+      </div>
+    </div>
+    {% if sponsor_rows %}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th>Категория</th>
+              <th>Сайт</th>
+              <th>Конференция</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in sponsor_rows %}
+              <tr>
+                <td class="text-wrap">{{ row.name }}</td>
+                <td class="text-wrap">{{ row.category or "—" }}</td>
+                <td class="text-wrap">{{ row.website or "—" }}</td>
+                <td class="text-wrap">{{ row.conference }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">Спонсоры пока не собраны.</div>
+    {% endif %}
+  </section>
+{% endblock %}
