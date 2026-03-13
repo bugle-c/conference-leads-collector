@@ -24,6 +24,16 @@ class StubTenChatFetcher:
         """
 
 
+class DirectUrlTenChatFetcher:
+    def search(self, query: str) -> str:
+        raise AssertionError("search() should not be called for direct TenChat URLs")
+
+    def fetch(self, url: str):
+        return 200, """
+        <html><body><h1>Jane Smith</h1><div>Руководитель маркетинга</div><div>Подписчики: 1 540</div></body></html>
+        """
+
+
 def build_settings() -> AppSettings:
     return AppSettings(
         app_env="test",
@@ -68,3 +78,22 @@ async def test_discover_tenchat_profiles_from_public_search(tmp_path: Path) -> N
         assert page_response.status_code == 200
         assert "Jane Smith" in page_response.text
         assert "2100" in page_response.text
+
+
+@pytest.mark.anyio
+async def test_discover_tenchat_profiles_accepts_direct_profile_urls(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=DirectUrlTenChatFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/tenchat/discover",
+            json={"queries": ["https://tenchat.ru/jane_smith"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        assert response.json()["profiles_found"] == 1

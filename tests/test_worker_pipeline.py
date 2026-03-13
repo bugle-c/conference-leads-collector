@@ -3,7 +3,7 @@ from pathlib import Path
 from conference_leads_collector.extractors.conferences import ConferenceExtractionResult, SpeakerResult, SponsorResult
 from conference_leads_collector.services.worker import process_next_job
 from conference_leads_collector.storage.db import create_engine, create_schema, session_scope
-from conference_leads_collector.storage.repositories import ConferenceSourceRepository, JobRepository
+from conference_leads_collector.storage.repositories import ActivityEventRepository, ConferenceSourceRepository, JobRepository
 
 
 HTML = """
@@ -263,3 +263,86 @@ def test_process_next_job_prefers_ai_first_extraction(tmp_path: Path) -> None:
         source = ConferenceSourceRepository(session).list_sources()[0]
         assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
         assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
+
+
+class NoisyAiFirstRefiner:
+    def extract_from_pages(self, conference_url: str, pages):
+        return ConferenceExtractionResult(
+            speakers=[
+                SpeakerResult(
+                    full_name="Купить билет",
+                    first_name=None,
+                    last_name=None,
+                    title="",
+                    company="",
+                    regalia_raw="",
+                ),
+                SpeakerResult(
+                    full_name="Jane Roe",
+                    first_name="Jane",
+                    last_name="Roe",
+                    title="CMO",
+                    company="Bright AI",
+                    regalia_raw="CMO, Bright AI",
+                ),
+            ],
+            sponsors=[
+                SponsorResult(name="Архив"),
+                SponsorResult(name="North Star AI"),
+            ],
+        )
+
+    def refine(self, conference_url: str, html: str, extracted):
+        return extracted
+
+
+def test_process_next_job_sanitizes_ai_entities_before_saving(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        sources.import_seed_urls(["https://example.com/conf"])
+        source = sources.list_sources()[0]
+        jobs.enqueue_crawl(source.id)
+
+    processed = process_next_job(engine, fetcher=AiFirstFetcher(), ai_refiner=NoisyAiFirstRefiner())
+
+    assert processed is True
+
+    with session_scope(engine) as session:
+        source = ConferenceSourceRepository(session).list_sources()[0]
+        assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
+        assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
+
+
+class BrokenAiRefiner:
+    def extract_from_pages(self, conference_url: str, pages):
+        raise RuntimeError("gateway timeout")
+
+    def refine(self, conference_url: str, html: str, extracted):
+        return extracted
+
+
+def test_process_next_job_logs_ai_failure_and_falls_back_to_heuristics(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        sources.import_seed_urls(["https://example.com/conf"])
+        source = sources.list_sources()[0]
+        jobs.enqueue_crawl(source.id)
+
+    processed = process_next_job(engine, fetcher=MultiPageFetcher(), ai_refiner=BrokenAiRefiner())
+
+    assert processed is True
+
+    with session_scope(engine) as session:
+        source = ConferenceSourceRepository(session).list_sources()[0]
+        events = ActivityEventRepository(session).list_recent(limit=10)
+
+        assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
+        assert any("AI недоступен" in event.title for event in events)

@@ -66,6 +66,32 @@ def test_extract_conference_data_ignores_navigation_noise_in_sponsors() -> None:
     assert result.sponsors == []
 
 
+SPONSOR_MIXED_HTML = """
+<html>
+  <body>
+    <section>
+      <h2>Партнеры</h2>
+      <ul>
+        <li>Архив</li>
+        <li>Тарифы</li>
+        <li>Партнерам</li>
+        <li>Acme Cloud</li>
+      </ul>
+      <div class="partner-card">
+        <img alt="North Star AI" src="/north-star.png" />
+      </div>
+    </section>
+  </body>
+</html>
+"""
+
+
+def test_extract_conference_data_keeps_only_real_sponsors_from_partner_sections() -> None:
+    result = extract_conference_data("https://example.com", SPONSOR_MIXED_HTML)
+
+    assert [sponsor.name for sponsor in result.sponsors] == ["Acme Cloud", "North Star AI"]
+
+
 SPEAKER_NOISE_HTML = """
 <html>
   <body>

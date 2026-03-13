@@ -9,6 +9,7 @@ from conference_leads_collector.extractors.conferences import (
     ConferenceExtractionResult,
     discover_candidate_pages,
     extract_conference_data,
+    sanitize_conference_data,
     score_extraction,
 )
 from conference_leads_collector.services.ai_extraction import AiConferenceRefiner
@@ -100,7 +101,15 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
             html = candidate_pages[0]["html"]
             extracted = None
             if active_ai_refiner is not None:
-                ai_result = active_ai_refiner.extract_from_pages(source.seed_url, candidate_pages)
+                try:
+                    ai_result = active_ai_refiner.extract_from_pages(source.seed_url, candidate_pages)
+                except Exception as exc:
+                    ai_result = None
+                    events.add_event(
+                        f"AI недоступен для {source.seed_url}",
+                        f"Задача #{job.id}: {exc}",
+                        level="error",
+                    )
                 if ai_result is not None:
                     extracted = ai_result
                     events.add_event(
@@ -110,9 +119,18 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
             if extracted is None:
                 status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
                 if active_ai_refiner is not None:
-                    refined = active_ai_refiner.refine(source.seed_url, html, extracted)
-                    if refined.speakers or refined.sponsors:
-                        extracted = refined
+                    try:
+                        refined = active_ai_refiner.refine(source.seed_url, html, extracted)
+                    except Exception as exc:
+                        events.add_event(
+                            f"AI очистка недоступна для {source.seed_url}",
+                            f"Задача #{job.id}: {exc}",
+                            level="error",
+                        )
+                    else:
+                        if refined.speakers or refined.sponsors:
+                            extracted = refined
+            extracted = sanitize_conference_data(extracted)
             if not _has_high_quality_entities(extracted):
                 jobs.mark_failed(job, "No high-quality entities found")
                 events.add_event(

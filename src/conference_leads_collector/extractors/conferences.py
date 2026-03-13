@@ -120,12 +120,29 @@ SPONSOR_NOISE_EXACT = {
     "узнать больше",
     "главная",
     "меню",
+    "архив",
+    "вакансии",
+    "тарифы",
+    "партнерам",
+    "партнёрам",
+    "билеты",
+    "билет",
+    "забронировать стенд",
+    "стенд",
+    "aij junior",
+    "aij deep dive",
+    "loader",
 }
 SPONSOR_NOISE_PARTS = (
     "@",
     "mailto:",
     "http://",
     "https://",
+    "забронировать",
+    "ticket",
+    "archive",
+    "vacanc",
+    "tarif",
 )
 
 
@@ -180,6 +197,8 @@ def _is_probably_sponsor_name(value: str) -> bool:
         return False
     if any(part in lowered for part in SPONSOR_NOISE_PARTS):
         return False
+    if any(lowered.startswith(prefix) for prefix in ("о ", "для ", "все ", "всё ")):
+        return False
     if len(normalized) > 64:
         return False
     if len(normalized.split()) > 4:
@@ -195,7 +214,39 @@ def extract_conference_data(url: str, html: str) -> ConferenceExtractionResult:
     soup = BeautifulSoup(html, "html.parser")
     speakers = _extract_speakers(soup)
     sponsors = _extract_sponsors(soup)
-    return ConferenceExtractionResult(speakers=speakers, sponsors=sponsors)
+    return sanitize_conference_data(ConferenceExtractionResult(speakers=speakers, sponsors=sponsors))
+
+
+def sanitize_conference_data(result: ConferenceExtractionResult) -> ConferenceExtractionResult:
+    sanitized_speakers: list[SpeakerResult] = []
+    seen_speakers: set[str] = set()
+    for speaker in result.speakers:
+        normalized_name = _normalize_text(speaker.full_name)
+        if not _is_probably_speaker_name(normalized_name):
+            continue
+        dedupe_key = normalized_name.lower()
+        if dedupe_key in seen_speakers:
+            continue
+        speaker.full_name = normalized_name
+        if not speaker.first_name or not speaker.last_name:
+            speaker.first_name, speaker.last_name = _split_name(normalized_name)
+        sanitized_speakers.append(speaker)
+        seen_speakers.add(dedupe_key)
+
+    sanitized_sponsors: list[SponsorResult] = []
+    seen_sponsors: set[str] = set()
+    for sponsor in result.sponsors:
+        normalized_name = _normalize_text(sponsor.name)
+        if not _is_probably_sponsor_name(normalized_name):
+            continue
+        dedupe_key = normalized_name.lower()
+        if dedupe_key in seen_sponsors:
+            continue
+        sponsor.name = normalized_name
+        sanitized_sponsors.append(sponsor)
+        seen_sponsors.add(dedupe_key)
+
+    return ConferenceExtractionResult(speakers=sanitized_speakers, sponsors=sanitized_sponsors)
 
 
 def discover_candidate_pages(seed_url: str, html: str) -> list[str]:

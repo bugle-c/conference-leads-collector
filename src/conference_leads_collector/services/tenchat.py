@@ -44,8 +44,7 @@ def discover_tenchat_profiles(engine, queries: list[str], fetcher: TenchatFetche
             ", ".join(queries[:5]) if queries else "Список запросов пуст",
         )
         for query in queries:
-            search_html = active_fetcher.search(query)
-            for profile_url in extract_public_profile_urls(search_html):
+            for profile_url in _resolve_profile_urls(active_fetcher, query):
                 status_code, html = active_fetcher.fetch(profile_url)
                 if status_code != 200:
                     continue
@@ -70,6 +69,15 @@ def discover_tenchat_profiles(engine, queries: list[str], fetcher: TenchatFetche
             f"Обработано запросов: {len(queries)}",
         )
     return total
+
+
+def _resolve_profile_urls(fetcher: TenchatFetcher, query: str) -> list[str]:
+    direct_url = query.strip()
+    if direct_url.startswith("http://tenchat.ru/") or direct_url.startswith("https://tenchat.ru/"):
+        return [direct_url]
+
+    search_html = fetcher.search(query)
+    return extract_public_profile_urls(search_html)
 
 
 def _matches_marketing_lead(job_title: str | None) -> bool:
