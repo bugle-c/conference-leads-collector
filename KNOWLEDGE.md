@@ -28,3 +28,4 @@
 - Admin navigation should preserve the `token` query parameter between pages; the current UI relies on query-token access for direct browser navigation, while API calls still use `Authorization: Bearer`.
 - Current admin visual style is a Russian-language monochrome layout with a shared base template and restrained Apple-like spacing/typography instead of raw standalone tables.
 - Human-readable action logging is stored in the `activity_events` table and shown on the dashboard as the primary operator feedback layer for imports, worker runs, TenChat discovery, empty queues, and failures.
+- Conference crawling is no longer limited to the seed page: the worker now discovers relevant internal pages (`speakers`, `program`, `agenda`, `archive`, `experts`, `committee`, `sessions`, `tracks` and Russian variants), fetches several candidates on the same domain, and keeps the richest extraction result instead of trusting a JS-heavy showcase page.

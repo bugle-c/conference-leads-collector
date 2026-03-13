@@ -5,7 +5,12 @@ from typing import Protocol
 
 import httpx
 
-from conference_leads_collector.extractors.conferences import extract_conference_data
+from conference_leads_collector.extractors.conferences import (
+    ConferenceExtractionResult,
+    discover_candidate_pages,
+    extract_conference_data,
+    score_extraction,
+)
 from conference_leads_collector.storage.db import session_scope
 from conference_leads_collector.storage.repositories import ActivityEventRepository, ConferenceSourceRepository, JobRepository
 
@@ -21,6 +26,28 @@ class HttpFetcher:
     def fetch(self, url: str) -> tuple[int, str]:
         response = httpx.get(url, timeout=self.timeout, follow_redirects=True)
         return response.status_code, response.text
+
+
+def _collect_best_extraction(fetcher: Fetcher, seed_url: str) -> tuple[int, str, ConferenceExtractionResult]:
+    status_code, html = fetcher.fetch(seed_url)
+    best_status = status_code
+    best_html = html
+    best_result = extract_conference_data(seed_url, html)
+    best_score = score_extraction(best_result)
+
+    for candidate_url in discover_candidate_pages(seed_url, html)[:8]:
+        candidate_status, candidate_html = fetcher.fetch(candidate_url)
+        if candidate_status != 200:
+            continue
+        candidate_result = extract_conference_data(candidate_url, candidate_html)
+        candidate_score = score_extraction(candidate_result)
+        if candidate_score > best_score:
+            best_status = candidate_status
+            best_html = candidate_html
+            best_result = candidate_result
+            best_score = candidate_score
+
+    return best_status, best_html, best_result
 
 
 def process_next_job(engine, fetcher: Fetcher | None = None) -> bool:
@@ -49,8 +76,7 @@ def process_next_job(engine, fetcher: Fetcher | None = None) -> bool:
                 f"Запущена обработка конференции {source.seed_url}",
                 f"Задача #{job.id} взята в работу",
             )
-            status_code, html = active_fetcher.fetch(source.seed_url)
-            extracted = extract_conference_data(source.seed_url, html)
+            status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
             sources.mark_crawled(
                 source.id,
                 source.seed_url,

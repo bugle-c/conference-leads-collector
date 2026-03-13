@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
@@ -37,6 +38,26 @@ class ConferenceExtractionResult:
 
 
 NAME_RE = re.compile(r"^[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё'-]+(?:\s+[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё'-]+){1,3}$")
+DISCOVERY_KEYWORDS = (
+    "speaker",
+    "speakers",
+    "спикер",
+    "спикеры",
+    "program",
+    "agenda",
+    "программа",
+    "archive",
+    "архив",
+    "expert",
+    "experts",
+    "эксперт",
+    "committee",
+    "комитет",
+    "session",
+    "sessions",
+    "track",
+    "tracks",
+)
 
 
 def _split_name(full_name: str) -> tuple[str | None, str | None]:
@@ -64,6 +85,37 @@ def extract_conference_data(url: str, html: str) -> ConferenceExtractionResult:
     speakers = _extract_speakers(soup)
     sponsors = _extract_sponsors(soup)
     return ConferenceExtractionResult(speakers=speakers, sponsors=sponsors)
+
+
+def discover_candidate_pages(seed_url: str, html: str) -> list[str]:
+    soup = BeautifulSoup(html, "html.parser")
+    parsed_seed = urlsplit(seed_url)
+    candidates: list[str] = []
+    seen: set[str] = {seed_url}
+
+    for anchor in soup.find_all("a", href=True):
+        href = anchor.get("href", "").strip()
+        if not href or href.startswith("#") or href.startswith("mailto:") or href.startswith("javascript:"):
+            continue
+        text = anchor.get_text(" ", strip=True).lower()
+        resolved = urljoin(seed_url, href)
+        parsed = urlsplit(resolved)
+        if parsed.netloc and parsed.netloc != parsed_seed.netloc:
+            continue
+        haystack = f"{text} {parsed.path.lower()}"
+        if not any(keyword in haystack for keyword in DISCOVERY_KEYWORDS):
+            continue
+        normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/') or parsed.path}"
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        candidates.append(normalized)
+
+    return candidates
+
+
+def score_extraction(result: ConferenceExtractionResult) -> int:
+    return len(result.speakers) * 10 + len(result.sponsors) * 6
 
 
 def _extract_speakers(soup: BeautifulSoup) -> list[SpeakerResult]:
