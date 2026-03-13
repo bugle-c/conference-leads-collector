@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi import Request
 import jwt
 from jwt import InvalidTokenError
+import xlsxwriter
 
 from conference_leads_collector.config import AppSettings
 from conference_leads_collector.services.ai_gateway import fetch_ai_gateway_credits
@@ -95,6 +96,33 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         return Response(
             content=buffer.getvalue(),
             media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    def _xlsx_response(filename: str, sheet_name: str, headers: list[tuple[str, str]], rows: list[dict]) -> Response:
+        buffer = io.BytesIO()
+        workbook = xlsxwriter.Workbook(buffer, {"in_memory": True})
+        worksheet = workbook.add_worksheet(sheet_name[:31] or "Sheet1")
+
+        header_format = workbook.add_format({"bold": True, "bg_color": "#F3F3F0", "border": 1})
+        text_format = workbook.add_format({"text_wrap": True, "valign": "top"})
+
+        for column, (_, title) in enumerate(headers):
+            worksheet.write(0, column, title, header_format)
+
+        for row_index, row in enumerate(rows, start=1):
+            for column, (key, _) in enumerate(headers):
+                worksheet.write(row_index, column, row.get(key, ""), text_format)
+
+        for column, (key, title) in enumerate(headers):
+            max_length = max([len(str(title))] + [len(str(row.get(key, ""))) for row in rows[:200]], default=len(title))
+            worksheet.set_column(column, column, min(max(max_length + 2, 16), 48))
+
+        worksheet.freeze_panes(1, 0)
+        workbook.close()
+        return Response(
+            content=buffer.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
@@ -243,6 +271,74 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         return _csv_response(
             "sponsors.csv",
             ["conference", "conference_url", "name", "category", "website", "description"],
+            rows,
+        )
+
+    @app.get("/exports/speakers.xlsx")
+    async def export_speakers_xlsx(authorization: str | None = Header(default=None), token: str | None = None) -> Response:
+        _require_token(authorization, settings, query_token=token)
+        with session_scope(app.state.engine) as session:
+            sources = ConferenceSourceRepository(session).list_sources()
+        rows = _flatten_speakers(sources)
+        return _xlsx_response(
+            "speakers.xlsx",
+            "Speakers",
+            [
+                ("first_name", "Имя"),
+                ("last_name", "Фамилия"),
+                ("regalia_raw", "Регалии и должность"),
+                ("company", "Компания"),
+                ("conference", "Конференция"),
+                ("conference_url", "URL конференции"),
+            ],
+            rows,
+        )
+
+    @app.get("/exports/sponsors.xlsx")
+    async def export_sponsors_xlsx(authorization: str | None = Header(default=None), token: str | None = None) -> Response:
+        _require_token(authorization, settings, query_token=token)
+        with session_scope(app.state.engine) as session:
+            sources = ConferenceSourceRepository(session).list_sources()
+        rows = _flatten_sponsors(sources)
+        return _xlsx_response(
+            "sponsors.xlsx",
+            "Sponsors",
+            [
+                ("name", "Название"),
+                ("category", "Категория"),
+                ("website", "Сайт"),
+                ("description", "Описание"),
+                ("conference", "Конференция"),
+                ("conference_url", "URL конференции"),
+            ],
+            rows,
+        )
+
+    @app.get("/exports/tenchat.xlsx")
+    async def export_tenchat_xlsx(authorization: str | None = Header(default=None), token: str | None = None) -> Response:
+        _require_token(authorization, settings, query_token=token)
+        with session_scope(app.state.engine) as session:
+            profiles = TenchatProfileRepository(session).list_profiles()
+        rows = [
+            {
+                "full_name": profile.full_name or "",
+                "job_title": profile.job_title or "",
+                "followers": profile.followers or "",
+                "profile_url": profile.profile_url,
+                "source_query": profile.source_query or "",
+            }
+            for profile in profiles
+        ]
+        return _xlsx_response(
+            "tenchat.xlsx",
+            "TenChat",
+            [
+                ("full_name", "Имя"),
+                ("job_title", "Должность"),
+                ("followers", "Подписчики"),
+                ("profile_url", "Ссылка"),
+                ("source_query", "Запрос"),
+            ],
             rows,
         )
 

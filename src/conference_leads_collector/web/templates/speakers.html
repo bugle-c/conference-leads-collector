@@ -18,7 +18,8 @@
         <div class="page-note">Скачивание вынесено в отдельный CSV, чтобы можно было сразу работать с таблицей.</div>
       </div>
       <div class="button-row">
-        <a class="ghost-link" href="/exports/speakers.csv?token={{ token or '' }}">Скачать CSV</a>
+        <a class="ghost-link" href="/exports/speakers.xlsx?token={{ token or '' }}">Скачать Excel</a>
+        <a class="ghost-link" href="/exports/speakers.csv?token={{ token or '' }}">CSV запасной</a>
       </div>
     </div>
     {% if speaker_rows %}

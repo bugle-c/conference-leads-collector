@@ -137,3 +137,13 @@ async def test_speaker_and_sponsor_exports_are_downloadable(tmp_path: Path) -> N
         sponsors_export = await client.get("/exports/sponsors.csv", headers={"Authorization": f"Bearer {token}"})
         assert sponsors_export.status_code == 200
         assert "attachment; filename=\"sponsors.csv\"" == sponsors_export.headers["content-disposition"]
+
+        speakers_xlsx = await client.get("/exports/speakers.xlsx", headers={"Authorization": f"Bearer {token}"})
+        assert speakers_xlsx.status_code == 200
+        assert "attachment; filename=\"speakers.xlsx\"" == speakers_xlsx.headers["content-disposition"]
+        assert speakers_xlsx.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+        sponsors_xlsx = await client.get("/exports/sponsors.xlsx", headers={"Authorization": f"Bearer {token}"})
+        assert sponsors_xlsx.status_code == 200
+        assert "attachment; filename=\"sponsors.xlsx\"" == sponsors_xlsx.headers["content-disposition"]
+        assert sponsors_xlsx.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

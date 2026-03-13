@@ -18,7 +18,8 @@
         <div class="page-note">CSV можно сразу отдать в таблицы или использовать для чистки дублей.</div>
       </div>
       <div class="button-row">
-        <a class="ghost-link" href="/exports/sponsors.csv?token={{ token or '' }}">Скачать CSV</a>
+        <a class="ghost-link" href="/exports/sponsors.xlsx?token={{ token or '' }}">Скачать Excel</a>
+        <a class="ghost-link" href="/exports/sponsors.csv?token={{ token or '' }}">CSV запасной</a>
       </div>
     </div>
     {% if sponsor_rows %}
