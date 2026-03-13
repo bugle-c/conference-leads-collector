@@ -72,3 +72,29 @@ async def test_import_sources_and_run_worker_once(tmp_path: Path) -> None:
         assert page_response.status_code == 200
         assert "https://example.com/conf" in page_response.text
         assert "Jane Smith" in page_response.text
+
+
+@pytest.mark.anyio
+async def test_run_batch_processes_multiple_jobs(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=StubFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/sources/import",
+            json={"urls": ["https://example.com/one", "https://example.com/two"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+
+        batch_response = await client.post(
+            "/api/jobs/run-batch",
+            json={"limit": 10},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert batch_response.status_code == 200
+        assert batch_response.json() == {"processed": 2, "remaining": 0}

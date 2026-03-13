@@ -124,3 +124,44 @@ def test_process_next_job_discovers_richer_internal_pages(tmp_path: Path) -> Non
         assert source.status == "crawled"
         assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
         assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
+
+
+class NoiseOnlyFetcher:
+    def fetch(self, url: str):
+        return 200, """
+        <html><body>
+          <section>
+            <h2>Спонсоры</h2>
+            <a href="/speakers">Спикеры</a>
+            <a href="/program">Программа</a>
+            <a href="/tickets">Купить билет</a>
+          </section>
+        </body></html>
+        """
+
+
+def test_process_next_job_marks_noise_only_pages_as_failed(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        sources.import_seed_urls(["https://example.com/noise"])
+        source = sources.list_sources()[0]
+        jobs.enqueue_crawl(source.id)
+
+    processed = process_next_job(engine, fetcher=NoiseOnlyFetcher())
+
+    assert processed is True
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        source = sources.list_sources()[0]
+        job = jobs.list_jobs()[0]
+
+        assert source.status == "pending"
+        assert source.speakers == []
+        assert source.sponsors == []
+        assert job.status == "failed"
