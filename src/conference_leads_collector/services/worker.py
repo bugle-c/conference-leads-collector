@@ -50,6 +50,10 @@ def _collect_best_extraction(fetcher: Fetcher, seed_url: str) -> tuple[int, str,
     return best_status, best_html, best_result
 
 
+def _has_high_quality_entities(result: ConferenceExtractionResult) -> bool:
+    return bool(result.speakers or result.sponsors)
+
+
 def process_next_job(engine, fetcher: Fetcher | None = None) -> bool:
     active_fetcher = fetcher or HttpFetcher()
     with session_scope(engine) as session:
@@ -77,6 +81,14 @@ def process_next_job(engine, fetcher: Fetcher | None = None) -> bool:
                 f"Задача #{job.id} взята в работу",
             )
             status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
+            if not _has_high_quality_entities(extracted):
+                jobs.mark_failed(job, "No high-quality entities found")
+                events.add_event(
+                    f"Обработка {source.seed_url} не дала результата",
+                    f"HTTP {status_code}, задача #{job.id} не содержит валидных спикеров или спонсоров",
+                    level="error",
+                )
+                return True
             sources.mark_crawled(
                 source.id,
                 source.seed_url,

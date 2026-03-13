@@ -55,9 +55,11 @@
 
       <section class="panel">
         <h2>Запуск обработки</h2>
-        <p>Выполняет одну следующую задачу из очереди. Подходит для ручной пошаговой проверки пайплайна.</p>
+        <p>Можно прогонять задачи по одной, пачкой или полностью. Это удобнее для реального объёма, чем один клик на один job.</p>
         <div class="button-row">
           <button class="button-primary" onclick="runWorker()">Запустить один шаг</button>
+          <button class="button-secondary" onclick="runBatch(10)">Запустить 10</button>
+          <button class="button-secondary" onclick="runBatch(200)">Запустить всё</button>
           <a class="ghost-link" href="/jobs?token={{ token or '' }}">Открыть очередь</a>
         </div>
       </section>
@@ -149,6 +151,16 @@
     async function runWorker() {
       const headers = await authHeaders();
       const response = await fetch("/api/jobs/run-once", { method: "POST", headers });
+      await handleResponse(response);
+    }
+
+    async function runBatch(limit) {
+      const headers = await authHeaders();
+      const response = await fetch("/api/jobs/run-batch", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ limit }),
+      });
       await handleResponse(response);
     }
 

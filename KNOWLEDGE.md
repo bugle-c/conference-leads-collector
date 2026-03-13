@@ -29,3 +29,5 @@
 - Current admin visual style is a Russian-language monochrome layout with a shared base template and restrained Apple-like spacing/typography instead of raw standalone tables.
 - Human-readable action logging is stored in the `activity_events` table and shown on the dashboard as the primary operator feedback layer for imports, worker runs, TenChat discovery, empty queues, and failures.
 - Conference crawling is no longer limited to the seed page: the worker now discovers relevant internal pages (`speakers`, `program`, `agenda`, `archive`, `experts`, `committee`, `sessions`, `tracks` and Russian variants), fetches several candidates on the same domain, and keeps the richest extraction result instead of trusting a JS-heavy showcase page.
+- Dashboard worker controls must support batch execution (`run-once`, `run 10`, `run all`) because one-job-per-click is unusable for real conference imports.
+- Sponsor extraction must aggressively drop navigation/CTA noise (`Спикеры`, `Программа`, emails, generic links, long prose); noise-only pages should fail the job instead of being marked as successfully crawled.

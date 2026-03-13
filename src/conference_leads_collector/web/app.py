@@ -126,6 +126,26 @@ def create_app(settings: AppSettings, engine=None, fetcher=None) -> FastAPI:
         processed = process_next_job(app.state.engine, fetcher=app.state.fetcher)
         return {"processed": processed}
 
+    @app.post("/api/jobs/run-batch")
+    async def run_batch(payload: dict, authorization: str | None = Header(default=None)) -> dict[str, int]:
+        _require_token(authorization, settings)
+        requested_limit = payload.get("limit", 10)
+        try:
+            limit = max(1, min(int(requested_limit), 200))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid limit") from exc
+
+        processed = 0
+        for _ in range(limit):
+            if not process_next_job(app.state.engine, fetcher=app.state.fetcher):
+                break
+            processed += 1
+
+        with session_scope(app.state.engine) as session:
+            remaining = sum(1 for job in JobRepository(session).list_jobs() if job.status == "pending")
+
+        return {"processed": processed, "remaining": remaining}
+
     @app.post("/api/tenchat/discover")
     async def discover_tenchat(payload: dict, authorization: str | None = Header(default=None)) -> dict[str, int]:
         _require_token(authorization, settings)

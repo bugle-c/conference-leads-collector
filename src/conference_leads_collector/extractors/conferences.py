@@ -38,6 +38,7 @@ class ConferenceExtractionResult:
 
 
 NAME_RE = re.compile(r"^[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё'-]+(?:\s+[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё'-]+){1,3}$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 DISCOVERY_KEYWORDS = (
     "speaker",
     "speakers",
@@ -57,6 +58,37 @@ DISCOVERY_KEYWORDS = (
     "sessions",
     "track",
     "tracks",
+)
+SPONSOR_SECTION_KEYWORDS = ("sponsor", "partner", "спонсор", "партнер")
+SPONSOR_NOISE_EXACT = {
+    "спикеры",
+    "speaker",
+    "speakers",
+    "программа",
+    "program",
+    "agenda",
+    "купить билет",
+    "tickets",
+    "ticket",
+    "контакты",
+    "contacts",
+    "о мероприятии",
+    "about",
+    "telegram",
+    "vk",
+    "вконтакте",
+    "подробнее",
+    "читать далее",
+    "смотреть все",
+    "узнать больше",
+    "главная",
+    "меню",
+}
+SPONSOR_NOISE_PARTS = (
+    "@",
+    "mailto:",
+    "http://",
+    "https://",
 )
 
 
@@ -78,6 +110,33 @@ def _parse_title_company(text: str) -> tuple[str | None, str | None]:
 def _heading_text(node: Tag) -> str:
     header = node.find(["h1", "h2", "h3", "h4"])
     return header.get_text(" ", strip=True).lower() if header else ""
+
+
+def _normalize_text(text: str) -> str:
+    return " ".join(text.split()).strip()
+
+
+def _is_probably_sponsor_name(value: str) -> bool:
+    normalized = _normalize_text(value)
+    lowered = normalized.lower()
+
+    if not normalized or len(normalized) < 2:
+        return False
+    if EMAIL_RE.match(lowered):
+        return False
+    if lowered in SPONSOR_NOISE_EXACT:
+        return False
+    if any(part in lowered for part in SPONSOR_NOISE_PARTS):
+        return False
+    if len(normalized) > 64:
+        return False
+    if len(normalized.split()) > 4:
+        return False
+    if re.search(r"[.!?]", normalized):
+        return False
+    if re.fullmatch(r"[\d\s\-+]+", normalized):
+        return False
+    return True
 
 
 def extract_conference_data(url: str, html: str) -> ConferenceExtractionResult:
@@ -183,23 +242,23 @@ def _extract_sponsors(soup: BeautifulSoup) -> list[SponsorResult]:
     containers = soup.select(".sponsor-card, .partner-card, .partner, .sponsor, section, div")
     for node in containers:
         heading = _heading_text(node)
-        if heading and not any(key in heading for key in ("sponsor", "partner", "спонсор", "партнер")):
+        if heading and not any(key in heading for key in SPONSOR_SECTION_KEYWORDS):
             continue
 
         for card in node.select(".sponsor-card, .partner-card, .partner, .sponsor, img, span, a"):
             name = None
             if card.name == "img":
-                name = (card.get("alt") or "").strip()
+                name = _normalize_text(card.get("alt") or "")
             elif card.name == "a":
-                name = card.get_text(" ", strip=True)
+                name = _normalize_text(card.get_text(" ", strip=True))
             else:
                 img = card.find("img")
                 if img and img.get("alt"):
-                    name = img.get("alt", "").strip()
+                    name = _normalize_text(img.get("alt", ""))
                 if not name:
-                    name = card.get_text(" ", strip=True)
+                    name = _normalize_text(card.get_text(" ", strip=True))
 
-            if not name or len(name) < 2:
+            if not _is_probably_sponsor_name(name or ""):
                 continue
             if name.lower() in {"спонсоры", "sponsors", "partners", "партнеры"}:
                 continue
