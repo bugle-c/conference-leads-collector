@@ -19,6 +19,64 @@ from conference_leads_collector.extractors.conferences import (
 class AiConferenceRefiner:
     settings: AppSettings
 
+    def extract_from_pages(
+        self,
+        conference_url: str,
+        pages: list[dict[str, str]],
+    ) -> ConferenceExtractionResult | None:
+        if not self.settings.ai_gateway_api_key or not pages:
+            return None
+
+        prepared_pages = [
+            {
+                "url": page["url"],
+                "text": BeautifulSoup(page["html"], "html.parser").get_text("\n", strip=True)[:12000],
+            }
+            for page in pages
+        ]
+        instructions = (
+            "Ты извлекаешь сущности с сайта конференции. Верни только JSON без пояснений. "
+            "Проанализируй несколько страниц одной конференции и выбери, где действительно есть спикеры и спонсоры. "
+            "Убери меню, кнопки, тарифы, архивы, CTA, вакансии, email, навигацию и служебный текст. "
+            "Спикеры: full_name, first_name, last_name, title, company, regalia_raw. "
+            "Спонсоры: name, category, description, website. "
+            "Если поле неизвестно, верни пустую строку. Не выдумывай."
+        )
+        user_prompt = {
+            "conference_url": conference_url,
+            "pages": prepared_pages,
+            "response_schema": {
+                "speakers": [
+                    {
+                        "full_name": "",
+                        "first_name": "",
+                        "last_name": "",
+                        "title": "",
+                        "company": "",
+                        "regalia_raw": "",
+                        "needs_review": False,
+                    }
+                ],
+                "sponsors": [
+                    {
+                        "name": "",
+                        "category": "",
+                        "description": "",
+                        "website": "",
+                        "needs_review": False,
+                    }
+                ],
+            },
+        }
+        try:
+            content = self._complete(instructions, user_prompt)
+            parsed = _extract_json_object(content)
+        except Exception:
+            return None
+
+        result = _build_result_from_payload(parsed)
+        return result if result.speakers or result.sponsors else None
+
     def refine(
         self,
         conference_url: str,
@@ -30,48 +88,32 @@ class AiConferenceRefiner:
 
         payload = self._request_payload(conference_url, html, extracted)
         try:
-            response = httpx.post(
-                f"{self.settings.ai_gateway_base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self.settings.ai_gateway_api_key}"},
-                json=payload,
-                timeout=35.0,
-            )
-            response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"]
+            content = self._complete(payload["messages"][0]["content"], json.loads(payload["messages"][1]["content"]))
             parsed = _extract_json_object(content)
         except Exception:
             return extracted
 
-        speakers = [
-            SpeakerResult(
-                full_name=item["full_name"],
-                first_name=item.get("first_name"),
-                last_name=item.get("last_name"),
-                title=item.get("title"),
-                company=item.get("company"),
-                regalia_raw=item.get("regalia_raw"),
-                confidence=90,
-                needs_review=item.get("needs_review", False),
-            )
-            for item in parsed.get("speakers", [])
-            if item.get("full_name")
-        ]
-        sponsors = [
-            SponsorResult(
-                name=item["name"],
-                category=item.get("category"),
-                description=item.get("description"),
-                website=item.get("website"),
-                confidence=85,
-                needs_review=item.get("needs_review", False),
-            )
-            for item in parsed.get("sponsors", [])
-            if item.get("name")
-        ]
-
-        if not speakers and not sponsors:
+        result = _build_result_from_payload(parsed)
+        if not result.speakers and not result.sponsors:
             return extracted
-        return ConferenceExtractionResult(speakers=speakers, sponsors=sponsors)
+        return result
+
+    def _complete(self, system_prompt: str, user_payload: dict) -> str:
+        response = httpx.post(
+            f"{self.settings.ai_gateway_base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {self.settings.ai_gateway_api_key}"},
+            json={
+                "model": self.settings.ai_gateway_model,
+                "temperature": 0,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+                ],
+            },
+            timeout=45.0,
+        )
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
 
     def _request_payload(
         self,
@@ -143,3 +185,33 @@ def _extract_json_object(content: str) -> dict:
     if content.startswith("```"):
         content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.DOTALL)
     return json.loads(content)
+
+
+def _build_result_from_payload(parsed: dict) -> ConferenceExtractionResult:
+    speakers = [
+        SpeakerResult(
+            full_name=item["full_name"],
+            first_name=item.get("first_name"),
+            last_name=item.get("last_name"),
+            title=item.get("title"),
+            company=item.get("company"),
+            regalia_raw=item.get("regalia_raw"),
+            confidence=90,
+            needs_review=item.get("needs_review", False),
+        )
+        for item in parsed.get("speakers", [])
+        if item.get("full_name")
+    ]
+    sponsors = [
+        SponsorResult(
+            name=item["name"],
+            category=item.get("category"),
+            description=item.get("description"),
+            website=item.get("website"),
+            confidence=85,
+            needs_review=item.get("needs_review", False),
+        )
+        for item in parsed.get("sponsors", [])
+        if item.get("name")
+    ]
+    return ConferenceExtractionResult(speakers=speakers, sponsors=sponsors)

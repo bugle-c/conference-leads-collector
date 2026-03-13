@@ -30,22 +30,32 @@ class HttpFetcher:
         return response.status_code, response.text
 
 
-def _collect_best_extraction(fetcher: Fetcher, seed_url: str) -> tuple[int, str, ConferenceExtractionResult]:
+def _collect_candidate_pages(fetcher: Fetcher, seed_url: str) -> list[dict[str, str]]:
     status_code, html = fetcher.fetch(seed_url)
+    pages = [{"url": seed_url, "status_code": status_code, "html": html}]
+    for candidate_url in discover_candidate_pages(seed_url, html)[:8]:
+        candidate_status, candidate_html = fetcher.fetch(candidate_url)
+        if candidate_status != 200:
+            continue
+        pages.append({"url": candidate_url, "status_code": candidate_status, "html": candidate_html})
+    return pages
+
+
+def _collect_best_extraction(fetcher: Fetcher, seed_url: str) -> tuple[int, str, ConferenceExtractionResult]:
+    pages = _collect_candidate_pages(fetcher, seed_url)
+    status_code = pages[0]["status_code"]
+    html = pages[0]["html"]
     best_status = status_code
     best_html = html
     best_result = extract_conference_data(seed_url, html)
     best_score = score_extraction(best_result)
 
-    for candidate_url in discover_candidate_pages(seed_url, html)[:8]:
-        candidate_status, candidate_html = fetcher.fetch(candidate_url)
-        if candidate_status != 200:
-            continue
-        candidate_result = extract_conference_data(candidate_url, candidate_html)
+    for page in pages[1:]:
+        candidate_result = extract_conference_data(page["url"], page["html"])
         candidate_score = score_extraction(candidate_result)
         if candidate_score > best_score:
-            best_status = candidate_status
-            best_html = candidate_html
+            best_status = page["status_code"]
+            best_html = page["html"]
             best_result = candidate_result
             best_score = candidate_score
 
@@ -85,11 +95,24 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
                 f"Запущена обработка конференции {source.seed_url}",
                 f"Задача #{job.id} взята в работу",
             )
-            status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
+            candidate_pages = _collect_candidate_pages(active_fetcher, source.seed_url)
+            status_code = candidate_pages[0]["status_code"]
+            html = candidate_pages[0]["html"]
+            extracted = None
             if active_ai_refiner is not None:
-                refined = active_ai_refiner.refine(source.seed_url, html, extracted)
-                if refined.speakers or refined.sponsors:
-                    extracted = refined
+                ai_result = active_ai_refiner.extract_from_pages(source.seed_url, candidate_pages)
+                if ai_result is not None:
+                    extracted = ai_result
+                    events.add_event(
+                        f"AI выбрал данные для {source.seed_url}",
+                        f"Задача #{job.id}: извлечение выполнено через AI-first pipeline",
+                    )
+            if extracted is None:
+                status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
+                if active_ai_refiner is not None:
+                    refined = active_ai_refiner.refine(source.seed_url, html, extracted)
+                    if refined.speakers or refined.sponsors:
+                        extracted = refined
             if not _has_high_quality_entities(extracted):
                 jobs.mark_failed(job, "No high-quality entities found")
                 events.add_event(

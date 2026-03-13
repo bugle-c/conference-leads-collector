@@ -34,5 +34,6 @@
 - AI Gateway balance in the dashboard is loaded from Vercel's official `/v1/credits` endpoint via `CLC_AI_GATEWAY_API_KEY`; that API exposes `balance` and `total_used`, but not a true current-month spend figure.
 - Conference extraction can now use AI cleanup via `CLC_AI_GATEWAY_API_KEY` and `CLC_AI_GATEWAY_MODEL`: the worker sends the selected page text plus heuristic candidates to the chat-completions API and prefers the refined result when it is at least as rich as the heuristic result.
 - Vercel AI Gateway chat-completions for this project should not use `response_format`; the gateway accepted the request only after falling back to plain prompt-enforced JSON.
+- Conference pipeline is now AI-first when the gateway key is present: the worker fetches the seed page plus candidate pages and lets the model extract speakers/sponsors across the page set before falling back to heuristics.
 - `sources` should stay overview-only; detailed work moved to separate `/speakers` and `/sponsors` pages plus CSV exports, otherwise the UI overflows and becomes unusable.
 - TenChat discovery cannot rely on DuckDuckGo HTML anymore because it often returns an anti-bot challenge; Bing RSS is the current public fallback, and profile parsing should support direct profile URLs as well as `tenchat.ru/post/...` pages via schema.org metadata and the public subscriber counter.

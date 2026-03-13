@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from conference_leads_collector.extractors.conferences import ConferenceExtractionResult, SpeakerResult, SponsorResult
 from conference_leads_collector.services.worker import process_next_job
 from conference_leads_collector.storage.db import create_engine, create_schema, session_scope
 from conference_leads_collector.storage.repositories import ConferenceSourceRepository, JobRepository
@@ -172,6 +173,9 @@ class RefiningAi:
         extracted.sponsors = []
         return extracted
 
+    def extract_from_pages(self, conference_url: str, pages):
+        return None
+
 
 def test_process_next_job_can_use_ai_refiner_to_clean_results(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
@@ -195,3 +199,67 @@ def test_process_next_job_can_use_ai_refiner_to_clean_results(tmp_path: Path) ->
         assert source.status == "crawled"
         assert [speaker.full_name for speaker in source.speakers] == ["John Doe"]
         assert source.sponsors == []
+
+
+class AiFirstFetcher:
+    def fetch(self, url: str):
+        pages = {
+            "https://example.com/conf": (
+                200,
+                """
+                <html><body>
+                  <a href="/program">Программа</a>
+                </body></html>
+                """,
+            ),
+            "https://example.com/program": (
+                200,
+                """
+                <html><body>
+                  <section><h2>Программа</h2><div>opaque source text</div></section>
+                </body></html>
+                """,
+            ),
+        }
+        return pages[url]
+
+
+class AiFirstRefiner:
+    def extract_from_pages(self, conference_url: str, pages):
+        return ConferenceExtractionResult(
+            speakers=[
+                SpeakerResult(
+                    full_name="Jane Roe",
+                    first_name="Jane",
+                    last_name="Roe",
+                    title="CMO",
+                    company="Bright AI",
+                    regalia_raw="CMO, Bright AI",
+                )
+            ],
+            sponsors=[SponsorResult(name="North Star AI")],
+        )
+
+    def refine(self, conference_url: str, html: str, extracted):
+        return extracted
+
+
+def test_process_next_job_prefers_ai_first_extraction(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        sources.import_seed_urls(["https://example.com/conf"])
+        source = sources.list_sources()[0]
+        jobs.enqueue_crawl(source.id)
+
+    processed = process_next_job(engine, fetcher=AiFirstFetcher(), ai_refiner=AiFirstRefiner())
+
+    assert processed is True
+
+    with session_scope(engine) as session:
+        source = ConferenceSourceRepository(session).list_sources()[0]
+        assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
+        assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
