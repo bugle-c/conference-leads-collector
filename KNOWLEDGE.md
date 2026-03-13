@@ -22,3 +22,4 @@
 - Normalize `postgresql://` env URLs to `postgresql+psycopg://` so SQLAlchemy uses psycopg3 consistently.
 - Seed import enqueues conference crawl jobs immediately; repeated imports must not create duplicate pending/running crawl jobs.
 - Current admin is intentionally server-rendered HTML plus small inline JS actions for seed import, worker run-once, and TenChat discovery.
+- Dokploy build image should stay on plain `python:3.12-slim` without `apt-get install build-essential curl`; current dependency set uses binary wheels and does not need system toolchains.
