@@ -92,6 +92,32 @@ def test_extract_conference_data_keeps_only_real_sponsors_from_partner_sections(
     assert [sponsor.name for sponsor in result.sponsors] == ["Acme Cloud", "North Star AI"]
 
 
+NFAI_NOISE_HTML = """
+<html>
+  <body>
+    <section>
+      <h2>Партнеры</h2>
+      <ul>
+        <li>Комитеты</li>
+        <li>Бизнес-миссии</li>
+        <li>Конференция</li>
+        <li>Обучение</li>
+        <li>Страницы</li>
+        <li>Telegram ENG</li>
+        <li>НФИИ</li>
+      </ul>
+    </section>
+  </body>
+</html>
+"""
+
+
+def test_extract_conference_data_drops_navigation_like_partner_terms() -> None:
+    result = extract_conference_data("https://example.com", NFAI_NOISE_HTML)
+
+    assert result.sponsors == []
+
+
 SPEAKER_NOISE_HTML = """
 <html>
   <body>
