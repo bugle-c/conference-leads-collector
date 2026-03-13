@@ -1,0 +1,37 @@
+[project]
+name = "conference-leads-collector"
+version = "0.1.0"
+description = "Conference and TenChat data collection service with admin panel"
+requires-python = ">=3.12"
+dependencies = [
+  "beautifulsoup4>=4.12,<5.0",
+  "fastapi>=0.115,<1.0",
+  "jinja2>=3.1,<4.0",
+  "psycopg[binary]>=3.2,<4.0",
+  "python-multipart>=0.0.20,<1.0",
+  "pydantic>=2.10,<3.0",
+  "pydantic-settings>=2.6,<3.0",
+  "pyjwt>=2.10,<3.0",
+  "redis>=5.2,<6.0",
+  "sqlalchemy>=2.0,<3.0",
+  "trafilatura>=2.0,<3.0",
+  "uvicorn>=0.34,<1.0",
+  "xlsxwriter>=3.2,<4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1.0",
+  "pytest>=9.0,<10.0",
+]
+
+[project.scripts]
+clc = "conference_leads_collector.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

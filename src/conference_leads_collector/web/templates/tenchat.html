@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>TenChat Profiles</title>
+    <style>
+      body { font-family: sans-serif; margin: 24px; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+      th { text-align: left; background: #f6f6f6; }
+    </style>
+  </head>
+  <body>
+    <h1>TenChat Profiles</h1>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Title</th>
+          <th>Followers</th>
+          <th>URL</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for profile in tenchat_profiles %}
+        <tr>
+          <td>{{ profile.full_name or "" }}</td>
+          <td>{{ profile.job_title or "" }}</td>
+          <td>{{ profile.followers or "" }}</td>
+          <td>{{ profile.profile_url }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </body>
+</html>

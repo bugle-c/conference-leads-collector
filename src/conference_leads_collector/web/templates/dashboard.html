@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Conference Leads Collector</title>
+    <style>
+      body { font-family: sans-serif; margin: 24px; }
+      .stats { display: flex; gap: 16px; margin-bottom: 24px; }
+      .card { border: 1px solid #ddd; padding: 12px 16px; border-radius: 8px; min-width: 140px; }
+      a { color: #0b57d0; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <h1>Conference Leads Collector</h1>
+    <div class="stats">
+      <div class="card">Sources: {{ sources_count }}</div>
+      <div class="card">Jobs: {{ jobs_count }}</div>
+      <div class="card">Speakers: {{ speakers_count }}</div>
+      <div class="card">Sponsors: {{ sponsors_count }}</div>
+      <div class="card">TenChat: {{ tenchat_count }}</div>
+    </div>
+    <p><a href="/sources">Sources</a> | <a href="/jobs">Jobs</a> | <a href="/tenchat">TenChat</a></p>
+
+    <h2>Import Conference Seeds</h2>
+    <textarea id="seed-urls" rows="8" cols="100" placeholder="https://aisummit.ru&#10;https://mergeconf.ru"></textarea>
+    <br>
+    <button onclick="importSeeds()">Import Seeds</button>
+
+    <h2>Run Conference Worker</h2>
+    <button onclick="runWorker()">Run Once</button>
+
+    <h2>Discover TenChat Profiles</h2>
+    <textarea id="tenchat-queries" rows="4" cols="100" placeholder="директор по маркетингу&#10;head of marketing"></textarea>
+    <br>
+    <button onclick="discoverTenchat()">Run TenChat Discovery</button>
+
+    <pre id="result-box"></pre>
+
+    <script>
+      async function authHeaders() {
+        const token = localStorage.getItem("clc_token") || prompt("Paste JWT token");
+        if (token) localStorage.setItem("clc_token", token);
+        return { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+      }
+
+      async function importSeeds() {
+        const urls = document.getElementById("seed-urls").value.split(/\n+/).map(v => v.trim()).filter(Boolean);
+        const headers = await authHeaders();
+        const response = await fetch("/api/sources/import", { method: "POST", headers, body: JSON.stringify({ urls }) });
+        document.getElementById("result-box").textContent = JSON.stringify(await response.json(), null, 2);
+      }
+
+      async function runWorker() {
+        const headers = await authHeaders();
+        const response = await fetch("/api/jobs/run-once", { method: "POST", headers });
+        document.getElementById("result-box").textContent = JSON.stringify(await response.json(), null, 2);
+      }
+
+      async function discoverTenchat() {
+        const queries = document.getElementById("tenchat-queries").value.split(/\n+/).map(v => v.trim()).filter(Boolean);
+        const headers = await authHeaders();
+        const response = await fetch("/api/tenchat/discover", { method: "POST", headers, body: JSON.stringify({ queries }) });
+        document.getElementById("result-box").textContent = JSON.stringify(await response.json(), null, 2);
+      }
+    </script>
+  </body>
+</html>

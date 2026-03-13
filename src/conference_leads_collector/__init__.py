@@ -1,0 +1,1 @@
+"""Conference Leads Collector package."""
