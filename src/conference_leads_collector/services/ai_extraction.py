@@ -68,12 +68,8 @@ class AiConferenceRefiner:
                 ],
             },
         }
-        try:
-            content = self._complete(instructions, user_prompt)
-            parsed = _extract_json_object(content)
-        except Exception:
-            return None
-
+        content = self._complete(instructions, user_prompt)
+        parsed = _extract_json_object(content)
         result = _build_result_from_payload(parsed)
         return result if result.speakers or result.sponsors else None
 
@@ -87,12 +83,8 @@ class AiConferenceRefiner:
             return extracted
 
         payload = self._request_payload(conference_url, html, extracted)
-        try:
-            content = self._complete(payload["messages"][0]["content"], json.loads(payload["messages"][1]["content"]))
-            parsed = _extract_json_object(content)
-        except Exception:
-            return extracted
-
+        content = self._complete(payload["messages"][0]["content"], json.loads(payload["messages"][1]["content"]))
+        parsed = _extract_json_object(content)
         result = _build_result_from_payload(parsed)
         if not result.speakers and not result.sponsors:
             return extracted
