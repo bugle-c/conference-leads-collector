@@ -63,6 +63,8 @@
 - Dashboard stats must distinguish `Всего задач` from live queue state. Showing only the latest/total job number as `Задачи` confuses operators; render separate `pending`, `running`, and `last job` hints instead.
 - Seed import should expand archive/index sites into separate conference source URLs before enqueueing jobs. For now expansion is triggered only when one input URL yields at least two same-domain conference-like pages with distinct years; plain single-conference URLs must stay unchanged.
 - The web app must instantiate a default `HttpFetcher` on startup. Archive expansion at import time relies on `app.state.fetcher`; leaving it `None` makes production web imports silently skip archive expansion even though tests with injected fetchers pass.
+- Archive-aware seed import is a long sync operation and must run through the same worker-thread wrapper as `run-once`, `run-batch`, `requeue`, and `tenchat/discover`; otherwise bulk imports freeze the async admin UI.
+- Dashboard activity cards should show a subtle timestamp for each event; operators need to distinguish when a task ran without turning the log into a heavy table.
 - Playwright adds ~500MB to Docker image (Chromium + system fonts). System deps installed in base stage for layer caching.
 - Cost per conference: ~$0.018 for vision (2-4 screenshots) + ~$0.003 for text supplement = ~$0.021 total. Old AI-first was ~$0.05+ (150K chars context).
 - Screenshots taken full-page with 2s lazy-load wait + scroll trigger. Max 3 subpages per conference (speakers, program, archive, sponsors).

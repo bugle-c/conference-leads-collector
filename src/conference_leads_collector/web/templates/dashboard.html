@@ -187,6 +187,15 @@
       overflow-wrap: anywhere;
     }
 
+    .activity-meta {
+      display: inline-block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
     @media (max-width: 1180px) {
       .hero,
       .dashboard-main-grid {
@@ -373,6 +382,9 @@
               <div class="activity-card-head">
                 <div>
                   <div class="activity-title">{{ event.title }}</div>
+                  <div class="activity-meta">
+                    {{ event.created_at.strftime("%d.%m.%Y %H:%M") if event.created_at else "Без времени" }}
+                  </div>
                   {% if event.details %}
                     <div class="page-note">{{ event.details }}</div>
                   {% endif %}

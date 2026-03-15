@@ -225,6 +225,26 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
             remaining = sum(1 for job in JobRepository(session).list_jobs() if job.status == "pending")
         return processed, remaining
 
+    def _import_sources_sync(urls: list[str]) -> dict[str, int]:
+        import_urls = expand_seed_urls(urls, app.state.fetcher)
+        with session_scope(app.state.engine) as session:
+            sources_repo = ConferenceSourceRepository(session)
+            jobs_repo = JobRepository(session)
+            events_repo = ActivityEventRepository(session)
+            result = sources_repo.import_seed_urls(import_urls)
+            for source in sources_repo.list_sources_by_urls(import_urls):
+                if source.status == "pending":
+                    jobs_repo.enqueue_crawl(source.id)
+            expanded_sources = max(0, len(import_urls) - len(urls))
+            details = f"Пропущено дублей: {result['skipped']}"
+            if expanded_sources:
+                details = f"{details}. Архив развёрнут в {expanded_sources} дополнительных конференций"
+            events_repo.add_event(
+                f"Импортировано {result['inserted']} новых конференций",
+                details,
+            )
+        return result
+
     async def _run_in_worker_thread(func, *args):
         result_queue: Queue[tuple[bool, object]] = Queue(maxsize=1)
 
@@ -299,24 +319,7 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
     ) -> dict[str, int]:
         _require_token(authorization, settings, query_token=token)
         urls = payload.get("urls", [])
-        import_urls = expand_seed_urls(urls, app.state.fetcher)
-        with session_scope(app.state.engine) as session:
-            sources_repo = ConferenceSourceRepository(session)
-            jobs_repo = JobRepository(session)
-            events_repo = ActivityEventRepository(session)
-            result = sources_repo.import_seed_urls(import_urls)
-            for source in sources_repo.list_sources_by_urls(import_urls):
-                if source.status == "pending":
-                    jobs_repo.enqueue_crawl(source.id)
-            expanded_sources = max(0, len(import_urls) - len(urls))
-            details = f"Пропущено дублей: {result['skipped']}"
-            if expanded_sources:
-                details = f"{details}. Архив развёрнут в {expanded_sources} дополнительных конференций"
-            events_repo.add_event(
-                f"Импортировано {result['inserted']} новых конференций",
-                details,
-            )
-        return result
+        return await _run_in_worker_thread(_import_sources_sync, urls)
 
     @app.post("/api/jobs/run-once")
     async def run_once(
