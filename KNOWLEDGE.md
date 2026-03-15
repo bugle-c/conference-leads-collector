@@ -50,6 +50,7 @@
 - Vision-first pipeline: Playwright screenshots → Gemini Vision → text AI supplement → merge → sanitize. Vision produces 0 garbage vs text pipeline's 6+ garbage entries per conference. Text pipeline kept as automatic fallback when Playwright/AI unavailable.
 - When the vision-first pipeline is triggered from async web routes, sync Playwright must run in a separate thread; otherwise production logs show `Playwright Sync API inside the asyncio loop`, vision silently falls back to text-only extraction, and JS-heavy conferences can end with false `No high-quality entities found`.
 - Manual queue control is source-driven now: new imports create `pending` sources/jobs automatically, worker transitions sources through `running` → `crawled`/`failed`, and operators can explicitly requeue an existing conference from `/sources` without re-importing the URL.
+- Jinja `tojson` must not be embedded inside double-quoted HTML event attributes. The `/sources` requeue button broke in production because `onclick="... {{ url|tojson }} ..."` produced invalid markup; use `data-*` attributes plus JS event listeners instead.
 - Playwright adds ~500MB to Docker image (Chromium + system fonts). System deps installed in base stage for layer caching.
 - Cost per conference: ~$0.018 for vision (2-4 screenshots) + ~$0.003 for text supplement = ~$0.021 total. Old AI-first was ~$0.05+ (150K chars context).
 - Screenshots taken full-page with 2s lazy-load wait + scroll trigger. Max 3 subpages per conference (speakers, program, archive, sponsors).

@@ -177,6 +177,38 @@ async def test_operator_can_requeue_existing_conference(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_sources_page_renders_requeue_button_without_inline_url_js(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=StubFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        import_response = await client.post(
+            "/api/sources/import",
+            json={"urls": ["https://example.com/conf?name=alpha&track=main"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert import_response.status_code == 200
+
+        first_run = await client.post(
+            "/api/jobs/run-once",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert first_run.status_code == 200
+        assert first_run.json() == {"processed": True}
+
+        sources_page = await client.get("/sources", headers={"Authorization": f"Bearer {token}"})
+        assert sources_page.status_code == 200
+        assert 'data-action="requeue-source"' in sources_page.text
+        assert 'data-source-id="1"' in sources_page.text
+        assert 'data-seed-url="https://example.com/conf"' in sources_page.text
+        assert 'onclick="requeueSource' not in sources_page.text
+
+
+@pytest.mark.anyio
 async def test_render_conference_pages_runs_browser_renderer_outside_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

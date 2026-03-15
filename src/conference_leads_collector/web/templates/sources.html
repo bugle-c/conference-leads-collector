@@ -117,7 +117,12 @@
                 {% if source.id in queued_source_ids %}
                   <span class="page-note">Уже в очереди</span>
                 {% else %}
-                  <button class="button-secondary" onclick="requeueSource(event, {{ source.id }}, {{ source.seed_url|tojson }})">
+                  <button
+                    class="button-secondary"
+                    data-action="requeue-source"
+                    data-source-id="{{ source.id }}"
+                    data-seed-url="{{ source.seed_url }}"
+                  >
                     Запустить заново
                   </button>
                 {% endif %}
@@ -197,5 +202,13 @@
         button.textContent = initialLabel;
       }
     }
+
+    document.querySelectorAll('[data-action="requeue-source"]').forEach((button) => {
+      button.addEventListener("click", (event) => {
+        const sourceId = Number(button.dataset.sourceId);
+        const seedUrl = button.dataset.seedUrl || "";
+        requeueSource(event, sourceId, seedUrl);
+      });
+    });
   </script>
 {% endblock %}
