@@ -88,6 +88,38 @@ class NestedArchiveFetcher:
         return 404, ""
 
 
+class PayloadArchiveFetcher:
+    def fetch(self, url: str):
+        if url == "https://spa-events.example.com":
+            return 200, """
+            <html>
+              <body>
+                <a href="/archive">Archive</a>
+              </body>
+            </html>
+            """
+        if url == "https://spa-events.example.com/sitemap.xml":
+            return 200, """
+            <urlset>
+              <url><loc>https://spa-events.example.com/archive</loc></url>
+            </urlset>
+            """
+        if url == "https://spa-events.example.com/archive":
+            return 200, """
+            <html>
+              <head>
+                <title>AI Events Archive</title>
+              </head>
+              <body>
+                <script>
+                  self.__next_f.push([1,"payload:{\\"items\\":[{\\"slug\\":\\"/events/ai-summit\\",\\"title\\":\\"AI Summit Moscow\\"},{\\"slug\\":\\"/events/data-forum\\",\\"title\\":\\"Data Forum\\"},{\\"slug\\":\\"/program\\",\\"title\\":\\"Program\\"},{\\"slug\\":\\"/archive\\",\\"title\\":\\"Archive\\"}]}"]);
+                </script>
+              </body>
+            </html>
+            """
+        return 404, ""
+
+
 def build_settings() -> AppSettings:
     return AppSettings(
         app_env="test",
@@ -271,6 +303,72 @@ async def test_import_sources_expands_nested_archive_hubs_into_conference_urls(t
         assert "https://archive.example.com/events/forum-2023" in sources_page.text
         assert "https://archive.example.com/events/forum-2024" in sources_page.text
         assert "https://archive.example.com/events/forum-2025" in sources_page.text
+
+
+@pytest.mark.anyio
+async def test_import_sources_expands_event_pages_without_year_from_payload(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=PayloadArchiveFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        import_response = await client.post(
+            "/api/sources/import",
+            json={"urls": ["https://spa-events.example.com"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert import_response.status_code == 200
+        assert import_response.json() == {"inserted": 2, "skipped": 0}
+
+        sources_page = await client.get("/sources", headers={"Authorization": f"Bearer {token}"})
+        assert sources_page.status_code == 200
+        assert "https://spa-events.example.com/events/ai-summit" in sources_page.text
+        assert "https://spa-events.example.com/events/data-forum" in sources_page.text
+        assert 'data-seed-url="https://spa-events.example.com/program"' not in sources_page.text
+        assert 'data-seed-url="https://spa-events.example.com/archive"' not in sources_page.text
+
+
+@pytest.mark.anyio
+async def test_import_sources_uses_browser_fallback_for_js_only_archive(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class JsOnlyArchiveFetcher:
+        def fetch(self, url: str):
+            if url == "https://js-only.example.com":
+                return 200, "<html><body><a href='/archive'>Archive</a></body></html>"
+            if url == "https://js-only.example.com/sitemap.xml":
+                return 200, "<urlset><url><loc>https://js-only.example.com/archive</loc></url></urlset>"
+            if url == "https://js-only.example.com/archive":
+                return 200, "<html><body><div id='app'></div></body></html>"
+            return 404, ""
+
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=JsOnlyArchiveFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    monkeypatch.setattr(
+        "conference_leads_collector.services.source_import._discover_browser_candidates",
+        lambda seed_url, probe_urls: [
+            "https://js-only.example.com/program/2023",
+            "https://js-only.example.com/program/2024",
+        ],
+    )
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        import_response = await client.post(
+            "/api/sources/import",
+            json={"urls": ["https://js-only.example.com"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert import_response.status_code == 200
+        assert import_response.json() == {"inserted": 2, "skipped": 0}
 
 
 @pytest.mark.anyio
