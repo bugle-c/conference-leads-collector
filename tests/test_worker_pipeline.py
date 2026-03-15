@@ -173,9 +173,6 @@ class RefiningAi:
         extracted.sponsors = []
         return extracted
 
-    def extract_from_pages(self, conference_url: str, pages):
-        return None
-
 
 def test_process_next_job_can_use_ai_refiner_to_clean_results(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
@@ -201,7 +198,8 @@ def test_process_next_job_can_use_ai_refiner_to_clean_results(tmp_path: Path) ->
         assert source.sponsors == []
 
 
-class AiFirstFetcher:
+class FewSpeakersFetcher:
+    """Fetcher that returns pages with few speakers so AI refine is triggered."""
     def fetch(self, url: str):
         pages = {
             "https://example.com/conf": (
@@ -209,6 +207,9 @@ class AiFirstFetcher:
                 """
                 <html><body>
                   <a href="/program">Программа</a>
+                  <section><h2>Speakers</h2>
+                    <article class="speaker-card"><h3>Alice Test</h3><p>CTO, TestCo</p></article>
+                  </section>
                 </body></html>
                 """,
             ),
@@ -224,27 +225,24 @@ class AiFirstFetcher:
         return pages[url]
 
 
-class AiFirstRefiner:
-    def extract_from_pages(self, conference_url: str, pages):
-        return ConferenceExtractionResult(
-            speakers=[
-                SpeakerResult(
-                    full_name="Jane Roe",
-                    first_name="Jane",
-                    last_name="Roe",
-                    title="CMO",
-                    company="Bright AI",
-                    regalia_raw="CMO, Bright AI",
-                )
-            ],
-            sponsors=[SponsorResult(name="North Star AI")],
-        )
-
+class FewSpeakersRefiner:
+    """AI refine adds more speakers when heuristics found < 3."""
     def refine(self, conference_url: str, html: str, extracted):
+        extracted.speakers.append(
+            SpeakerResult(
+                full_name="Jane Roe",
+                first_name="Jane",
+                last_name="Roe",
+                title="CMO",
+                company="Bright AI",
+                regalia_raw="CMO, Bright AI",
+            )
+        )
         return extracted
 
 
-def test_process_next_job_prefers_ai_first_extraction(tmp_path: Path) -> None:
+def test_process_next_job_uses_ai_refine_when_few_speakers(tmp_path: Path) -> None:
+    """AI refine is triggered when heuristics found < 3 speakers."""
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
     create_schema(engine)
 
@@ -255,18 +253,20 @@ def test_process_next_job_prefers_ai_first_extraction(tmp_path: Path) -> None:
         source = sources.list_sources()[0]
         jobs.enqueue_crawl(source.id)
 
-    processed = process_next_job(engine, fetcher=AiFirstFetcher(), ai_refiner=AiFirstRefiner())
+    processed = process_next_job(engine, fetcher=FewSpeakersFetcher(), ai_refiner=FewSpeakersRefiner())
 
     assert processed is True
 
     with session_scope(engine) as session:
         source = ConferenceSourceRepository(session).list_sources()[0]
-        assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
-        assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
+        speaker_names = [speaker.full_name for speaker in source.speakers]
+        assert "Alice Test" in speaker_names
+        assert "Jane Roe" in speaker_names
 
 
-class NoisyAiFirstRefiner:
-    def extract_from_pages(self, conference_url: str, pages):
+class NoisyRefiner:
+    """AI refine returns noisy results that should be sanitized."""
+    def refine(self, conference_url: str, html: str, extracted):
         return ConferenceExtractionResult(
             speakers=[
                 SpeakerResult(
@@ -292,9 +292,6 @@ class NoisyAiFirstRefiner:
             ],
         )
 
-    def refine(self, conference_url: str, html: str, extracted):
-        return extracted
-
 
 def test_process_next_job_sanitizes_ai_entities_before_saving(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
@@ -307,7 +304,7 @@ def test_process_next_job_sanitizes_ai_entities_before_saving(tmp_path: Path) ->
         source = sources.list_sources()[0]
         jobs.enqueue_crawl(source.id)
 
-    processed = process_next_job(engine, fetcher=AiFirstFetcher(), ai_refiner=NoisyAiFirstRefiner())
+    processed = process_next_job(engine, fetcher=FewSpeakersFetcher(), ai_refiner=NoisyRefiner())
 
     assert processed is True
 
@@ -317,12 +314,10 @@ def test_process_next_job_sanitizes_ai_entities_before_saving(tmp_path: Path) ->
         assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
 
 
-class BrokenAiRefiner:
-    def extract_from_pages(self, conference_url: str, pages):
-        raise RuntimeError("gateway timeout")
-
+class BrokenRefiner:
+    """AI refine raises an error, worker should fall back to heuristics."""
     def refine(self, conference_url: str, html: str, extracted):
-        return extracted
+        raise RuntimeError("gateway timeout")
 
 
 def test_process_next_job_logs_ai_failure_and_falls_back_to_heuristics(tmp_path: Path) -> None:
@@ -336,7 +331,7 @@ def test_process_next_job_logs_ai_failure_and_falls_back_to_heuristics(tmp_path:
         source = sources.list_sources()[0]
         jobs.enqueue_crawl(source.id)
 
-    processed = process_next_job(engine, fetcher=MultiPageFetcher(), ai_refiner=BrokenAiRefiner())
+    processed = process_next_job(engine, fetcher=MultiPageFetcher(), ai_refiner=BrokenRefiner())
 
     assert processed is True
 
@@ -345,4 +340,4 @@ def test_process_next_job_logs_ai_failure_and_falls_back_to_heuristics(tmp_path:
         events = ActivityEventRepository(session).list_recent(limit=10)
 
         assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
-        assert any("AI недоступен" in event.title for event in events)
+        assert any("AI очистка недоступна" in event.title for event in events)

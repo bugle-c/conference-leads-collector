@@ -34,7 +34,7 @@
 - AI Gateway balance in the dashboard is loaded from Vercel's official `/v1/credits` endpoint via `CLC_AI_GATEWAY_API_KEY`; that API exposes `balance` and `total_used`, but not a true current-month spend figure.
 - Conference extraction can now use AI cleanup via `CLC_AI_GATEWAY_API_KEY` and `CLC_AI_GATEWAY_MODEL`: the worker sends the selected page text plus heuristic candidates to the chat-completions API and prefers the refined result when it is at least as rich as the heuristic result.
 - Vercel AI Gateway chat-completions for this project should not use `response_format`; the gateway accepted the request only after falling back to plain prompt-enforced JSON.
-- Conference pipeline is now AI-first when the gateway key is present: the worker fetches the seed page plus candidate pages and lets the model extract speakers/sponsors across the page set before falling back to heuristics.
+- Conference pipeline is heuristics-first: the worker always runs heuristic extraction first, and only calls AI refine when the heuristic result has fewer than 3 speakers. This eliminates the expensive AI-first path and the double AI call pattern. AI context is capped at 2 pages × 10K chars (was 5 × 30K).
 - `AiConferenceRefiner` must not swallow gateway/JSON errors internally; worker-level logging/fallback depends on those exceptions reaching `process_next_job`, otherwise AI quietly degrades to heuristics with no operator signal.
 - CLI worker execution must pass `settings` into `process_next_job`; otherwise production runs started via `python -m conference_leads_collector.cli run-worker` silently disable AI even when `CLC_AI_GATEWAY_API_KEY` is present in the environment.
 - AI failures during conference extraction should never abort the whole crawl path anymore: the worker logs a human-readable `AI недоступен...` event and falls back to heuristics/cleanup instead of marking the source as broken immediately.
@@ -43,3 +43,5 @@
 - Primary operator exports should be `.xlsx`, not only CSV; the service now renders Excel files directly from the current database state for speakers, sponsors, and TenChat.
 - TenChat discovery cannot rely on DuckDuckGo HTML anymore because it often returns an anti-bot challenge; Bing RSS is the current public fallback, and profile parsing should support direct profile URLs as well as `tenchat.ru/post/...` pages via schema.org metadata and the public subscriber counter.
 - TenChat discovery should treat direct `tenchat.ru/...` values in the query box as explicit profile URLs and fetch them directly instead of sending them through public search.
+- Sponsor img[alt] extraction is now limited to sections with explicit sponsor/partner headings; previously any section/div without a heading would expose img alts as sponsor names, producing garbage.
+- Speaker name validation requires minimum 5 characters and has expanded noise filters covering CTA labels, navigation items, and common Russian web UI terms.

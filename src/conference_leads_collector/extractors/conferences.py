@@ -70,6 +70,30 @@ SPEAKER_NOISE_EXACT = {
     "спикеры",
     "program",
     "speakers",
+    "войти",
+    "выйти",
+    "меню",
+    "главная",
+    "контакты",
+    "contacts",
+    "о мероприятии",
+    "about",
+    "подробнее",
+    "читать далее",
+    "узнать больше",
+    "смотреть все",
+    "открыть регистрацию",
+    "скачать программу",
+    "партнерам",
+    "партнёрам",
+    "забронировать стенд",
+    "забронировать",
+    "тарифы",
+    "билеты",
+    "архив",
+    "вакансии",
+    "обучение",
+    "конференция",
 }
 SPEAKER_NOISE_PARTS = (
     "ticket",
@@ -79,6 +103,16 @@ SPEAKER_NOISE_PARTS = (
     "submit",
     "доклад",
     "билет",
+    "купить",
+    "скачать",
+    "открыть",
+    "войти",
+    "подать заявк",
+    "заказать",
+    "забронировать",
+    "подписаться",
+    "subscribe",
+    "download",
 )
 ORG_WORDS = {
     "university",
@@ -181,6 +215,8 @@ def _is_probably_speaker_name(value: str) -> bool:
     normalized = _normalize_text(value)
     lowered = normalized.lower()
     if not NAME_RE.match(normalized):
+        return False
+    if len(normalized) < 5:
         return False
     if lowered in SPEAKER_NOISE_EXACT:
         return False
@@ -352,11 +388,13 @@ def _extract_sponsors(soup: BeautifulSoup) -> list[SponsorResult]:
     containers = soup.select(".sponsor-card, .partner-card, .partner, .sponsor, section, div")
     for node in containers:
         heading = _heading_text(node)
-        if heading and not any(key in heading for key in SPONSOR_SECTION_KEYWORDS):
+        has_sponsor_heading = heading and any(key in heading for key in SPONSOR_SECTION_KEYWORDS)
+        if heading and not has_sponsor_heading:
             continue
 
         explicit_cards = node.select(".sponsor-card, .partner-card, .partner, .sponsor, li")
-        cards = explicit_cards or node.select("img")
+        # Only use img fallback inside sections with explicit sponsor/partner headings
+        cards = explicit_cards or (node.select("img") if has_sponsor_heading else [])
 
         for card in cards:
             name = None

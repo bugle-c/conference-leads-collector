@@ -30,9 +30,9 @@ class AiConferenceRefiner:
         prepared_pages = [
             {
                 "url": page["url"],
-                "text": BeautifulSoup(page["html"], "html.parser").get_text("\n", strip=True)[:30000],
+                "text": BeautifulSoup(page["html"], "html.parser").get_text("\n", strip=True)[:10000],
             }
-            for page in pages[:5]
+            for page in pages[:2]
         ]
         instructions = (
             "Ты извлекаешь сущности с сайта конференции. Верни только JSON без пояснений. "
@@ -114,7 +114,7 @@ class AiConferenceRefiner:
         extracted: ConferenceExtractionResult,
     ) -> dict:
         page_text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
-        page_text = page_text[:24000]
+        page_text = page_text[:10000]
         candidates = {
             "speakers": [
                 {

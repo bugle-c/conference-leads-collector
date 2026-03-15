@@ -96,40 +96,24 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
                 f"Запущена обработка конференции {source.seed_url}",
                 f"Задача #{job.id} взята в работу",
             )
-            candidate_pages = _collect_candidate_pages(active_fetcher, source.seed_url)
-            status_code = candidate_pages[0]["status_code"]
-            html = candidate_pages[0]["html"]
-            extracted = None
-            if active_ai_refiner is not None:
+            status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
+            # Use AI refine only when heuristics found few speakers
+            if active_ai_refiner is not None and len(extracted.speakers) < 3:
                 try:
-                    ai_result = active_ai_refiner.extract_from_pages(source.seed_url, candidate_pages)
+                    refined = active_ai_refiner.refine(source.seed_url, html, extracted)
                 except Exception as exc:
-                    ai_result = None
                     events.add_event(
-                        f"AI недоступен для {source.seed_url}",
+                        f"AI очистка недоступна для {source.seed_url}",
                         f"Задача #{job.id}: {exc}",
                         level="error",
                     )
-                if ai_result is not None:
-                    extracted = ai_result
-                    events.add_event(
-                        f"AI выбрал данные для {source.seed_url}",
-                        f"Задача #{job.id}: извлечение выполнено через AI-first pipeline",
-                    )
-            if extracted is None:
-                status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
-                if active_ai_refiner is not None:
-                    try:
-                        refined = active_ai_refiner.refine(source.seed_url, html, extracted)
-                    except Exception as exc:
+                else:
+                    if refined.speakers or refined.sponsors:
+                        extracted = refined
                         events.add_event(
-                            f"AI очистка недоступна для {source.seed_url}",
-                            f"Задача #{job.id}: {exc}",
-                            level="error",
+                            f"AI уточнил данные для {source.seed_url}",
+                            f"Задача #{job.id}: эвристика дала мало результатов, AI помог",
                         )
-                    else:
-                        if refined.speakers or refined.sponsors:
-                            extracted = refined
             extracted = sanitize_conference_data(extracted)
             if not _has_high_quality_entities(extracted):
                 jobs.mark_failed(job, "No high-quality entities found")
