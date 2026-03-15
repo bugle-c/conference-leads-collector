@@ -18,6 +18,7 @@ import xlsxwriter
 
 from conference_leads_collector.config import AppSettings
 from conference_leads_collector.services.ai_gateway import fetch_ai_gateway_credits
+from conference_leads_collector.services.source_import import expand_seed_urls
 from conference_leads_collector.services.worker import process_next_job
 from conference_leads_collector.services.tenchat import discover_tenchat_profiles
 from conference_leads_collector.storage.db import create_engine, create_schema, session_scope
@@ -298,17 +299,22 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
     ) -> dict[str, int]:
         _require_token(authorization, settings, query_token=token)
         urls = payload.get("urls", [])
+        import_urls = expand_seed_urls(urls, app.state.fetcher)
         with session_scope(app.state.engine) as session:
             sources_repo = ConferenceSourceRepository(session)
             jobs_repo = JobRepository(session)
             events_repo = ActivityEventRepository(session)
-            result = sources_repo.import_seed_urls(urls)
-            for source in sources_repo.list_sources_by_urls(urls):
+            result = sources_repo.import_seed_urls(import_urls)
+            for source in sources_repo.list_sources_by_urls(import_urls):
                 if source.status == "pending":
                     jobs_repo.enqueue_crawl(source.id)
+            expanded_sources = max(0, len(import_urls) - len(urls))
+            details = f"Пропущено дублей: {result['skipped']}"
+            if expanded_sources:
+                details = f"{details}. Архив развёрнут в {expanded_sources} дополнительных конференций"
             events_repo.add_event(
                 f"Импортировано {result['inserted']} новых конференций",
-                f"Пропущено дублей: {result['skipped']}",
+                details,
             )
         return result
 

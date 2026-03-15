@@ -23,6 +23,29 @@ class StubFetcher:
         """
 
 
+class ArchiveIndexFetcher:
+    def fetch(self, url: str):
+        if url == "https://aij.ru":
+            return 200, """
+            <html>
+              <body>
+                <a href="/program/2024">AIJ 2024</a>
+                <a href="/program/2025">AIJ 2025</a>
+                <a href="/contacts">Contacts</a>
+              </body>
+            </html>
+            """
+        if url == "https://aij.ru/sitemap.xml":
+            return 200, """
+            <urlset>
+              <url><loc>https://aij.ru/program/2024</loc></url>
+              <url><loc>https://aij.ru/program/2025</loc></url>
+              <url><loc>https://aij.ru/program/2023</loc></url>
+            </urlset>
+            """
+        return 404, ""
+
+
 def build_settings() -> AppSettings:
     return AppSettings(
         app_env="test",
@@ -126,6 +149,38 @@ async def test_admin_api_accepts_query_token_for_browser_actions(tmp_path: Path)
         )
         assert batch_response.status_code == 200
         assert batch_response.json() == {"processed": 1, "remaining": 0}
+
+
+@pytest.mark.anyio
+async def test_import_sources_expands_archive_index_into_conference_urls(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=ArchiveIndexFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        import_response = await client.post(
+            "/api/sources/import",
+            json={"urls": ["https://aij.ru"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert import_response.status_code == 200
+        assert import_response.json() == {"inserted": 3, "skipped": 0}
+
+        sources_page = await client.get("/sources", headers={"Authorization": f"Bearer {token}"})
+        assert sources_page.status_code == 200
+        assert "https://aij.ru/program/2023" in sources_page.text
+        assert "https://aij.ru/program/2024" in sources_page.text
+        assert "https://aij.ru/program/2025" in sources_page.text
+        assert 'data-seed-url="https://aij.ru"' not in sources_page.text
+
+        jobs_page = await client.get("/jobs", headers={"Authorization": f"Bearer {token}"})
+        assert jobs_page.status_code == 200
+        assert "https://aij.ru/program/2023" in jobs_page.text
+        assert "https://aij.ru/program/2024" in jobs_page.text
+        assert "https://aij.ru/program/2025" in jobs_page.text
 
 
 @pytest.mark.anyio
