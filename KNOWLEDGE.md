@@ -66,6 +66,7 @@
 - The web app must instantiate a default `HttpFetcher` on startup. Archive expansion at import time relies on `app.state.fetcher`; leaving it `None` makes production web imports silently skip archive expansion even though tests with injected fetchers pass.
 - Archive-aware seed import is a long sync operation and must run through the same worker-thread wrapper as `run-once`, `run-batch`, `requeue`, and `tenchat/discover`; otherwise bulk imports freeze the async admin UI.
 - Dashboard activity cards should show a subtle timestamp for each event; operators need to distinguish when a task ran without turning the log into a heavy table.
+- In production SQLite, concurrent UI import/requeue requests can collide with worker writes. Activity logging for web actions must be best-effort and run outside the main import/requeue transaction; otherwise `INSERT INTO activity_events` can raise `database is locked` and falsely turn a successful action into HTTP 500.
 - Playwright adds ~500MB to Docker image (Chromium + system fonts). System deps installed in base stage for layer caching.
 - Cost per conference: ~$0.018 for vision (2-4 screenshots) + ~$0.003 for text supplement = ~$0.021 total. Old AI-first was ~$0.05+ (150K chars context).
 - Screenshots taken full-page with 2s lazy-load wait + scroll trigger. Max 3 subpages per conference (speakers, program, archive, sponsors).

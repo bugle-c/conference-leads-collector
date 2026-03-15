@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi import Request
 import jwt
 from jwt import InvalidTokenError
+from sqlalchemy.exc import OperationalError
 import xlsxwriter
 
 from conference_leads_collector.config import AppSettings
@@ -214,6 +215,14 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
     def _run_next_job_sync() -> bool:
         return process_next_job(app.state.engine, fetcher=app.state.fetcher, settings=settings)
 
+    def _log_activity_event_best_effort(title: str, details: str | None = None, level: str = "info") -> None:
+        try:
+            with session_scope(app.state.engine) as session:
+                ActivityEventRepository(session).add_event(title, details, level=level)
+        except OperationalError:
+            # SQLite allows only one writer; UI actions should still succeed when event logging collides.
+            return
+
     def _run_batch_sync(limit: int) -> tuple[int, int]:
         processed = 0
         for _ in range(limit):
@@ -230,7 +239,6 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         with session_scope(app.state.engine) as session:
             sources_repo = ConferenceSourceRepository(session)
             jobs_repo = JobRepository(session)
-            events_repo = ActivityEventRepository(session)
             result = sources_repo.import_seed_urls(import_urls)
             for source in sources_repo.list_sources_by_urls(import_urls):
                 if source.status == "pending":
@@ -239,10 +247,10 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
             details = f"Пропущено дублей: {result['skipped']}"
             if expanded_sources:
                 details = f"{details}. Архив развёрнут в {expanded_sources} дополнительных конференций"
-            events_repo.add_event(
-                f"Импортировано {result['inserted']} новых конференций",
-                details,
-            )
+        _log_activity_event_best_effort(
+            f"Импортировано {result['inserted']} новых конференций",
+            details,
+        )
         return result
 
     async def _run_in_worker_thread(func, *args):
@@ -340,7 +348,6 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         with session_scope(app.state.engine) as session:
             sources_repo = ConferenceSourceRepository(session)
             jobs_repo = JobRepository(session)
-            events_repo = ActivityEventRepository(session)
             source = sources_repo.get_source(source_id)
             if source is None:
                 raise HTTPException(status_code=404, detail="Conference source not found")
@@ -349,10 +356,10 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
             sources_repo.mark_pending(source.id)
             source_url = source.seed_url
             job_id = job.id
-            events_repo.add_event(
-                f"Конференция поставлена в очередь повторно: {source.seed_url}",
-                f"Задача #{job.id} готова к повторной обработке",
-            )
+        _log_activity_event_best_effort(
+            f"Конференция поставлена в очередь повторно: {source_url}",
+            f"Задача #{job_id} готова к повторной обработке",
+        )
         processed = await _run_in_worker_thread(_run_next_job_sync)
         return {
             "queued": True,

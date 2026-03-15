@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 import jwt
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from conference_leads_collector.config import AppSettings
 from conference_leads_collector.storage.db import create_engine, create_schema
@@ -422,6 +423,37 @@ async def test_import_sources_runs_outside_event_loop_thread(
 
     assert route_threads == [route_threads[0]]
     assert route_threads[0] != threading.current_thread().name
+
+
+@pytest.mark.anyio
+async def test_import_sources_succeeds_when_activity_logging_hits_sqlite_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=StubFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    def locked_event(*args, **kwargs):
+        raise OperationalError("INSERT INTO activity_events", {}, Exception("database is locked"))
+
+    monkeypatch.setattr("conference_leads_collector.web.app.ActivityEventRepository.add_event", locked_event)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/sources/import",
+            json={"urls": ["https://example.com/conf"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"inserted": 1, "skipped": 0}
+
+        sources_page = await client.get("/sources", headers={"Authorization": f"Bearer {token}"})
+        assert sources_page.status_code == 200
+        assert "https://example.com/conf" in sources_page.text
 
 
 @pytest.mark.anyio
