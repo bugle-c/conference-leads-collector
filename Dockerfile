@@ -37,10 +37,9 @@ COPY seeds ./seeds
 COPY README.md pyproject.toml ./
 
 RUN useradd --create-home --shell /bin/bash appuser \
-    && mkdir -p /app/data \
-    && chown -R appuser:appuser /app \
+    && mkdir -p /app/data /home/appuser/.cache \
     && cp -r /root/.cache/ms-playwright /home/appuser/.cache/ms-playwright \
-    && chown -R appuser:appuser /home/appuser/.cache
+    && chown -R appuser:appuser /app /home/appuser/.cache
 
 USER appuser
 
