@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from queue import Queue
+from threading import Thread
 from dataclasses import asdict
 from typing import Protocol
 
@@ -29,6 +31,31 @@ class HttpFetcher:
     def fetch(self, url: str) -> tuple[int, str]:
         response = httpx.get(url, timeout=self.timeout, follow_redirects=True)
         return response.status_code, response.text
+
+
+def _render_conference_pages(seed_url: str, renderer_factory=None) -> list:
+    if renderer_factory is None:
+        from conference_leads_collector.services.browser import BrowserRenderer
+
+        renderer_factory = BrowserRenderer
+
+    result_queue: Queue[tuple[bool, object]] = Queue(maxsize=1)
+
+    def runner() -> None:
+        try:
+            rendered_pages = renderer_factory().render_conference(seed_url)
+        except Exception as exc:
+            result_queue.put((False, exc))
+            return
+        result_queue.put((True, rendered_pages))
+
+    thread = Thread(target=runner, name="clc-browser-render", daemon=True)
+    thread.start()
+    thread.join()
+    success, payload = result_queue.get()
+    if success:
+        return payload
+    raise payload
 
 
 def _collect_candidate_pages(fetcher: Fetcher, seed_url: str) -> list[dict[str, str]]:
@@ -135,11 +162,9 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
             # --- Vision pipeline (primary) ---
             if settings is not None and settings.ai_gateway_api_key:
                 try:
-                    from conference_leads_collector.services.browser import BrowserRenderer
                     from conference_leads_collector.services.vision_extraction import VisionExtractor
 
-                    renderer = BrowserRenderer()
-                    rendered_pages = renderer.render_conference(source.seed_url)
+                    rendered_pages = _render_conference_pages(source.seed_url)
 
                     if rendered_pages:
                         status_code = 200

@@ -1,4 +1,6 @@
 import time
+import asyncio
+import threading
 from pathlib import Path
 
 import httpx
@@ -7,6 +9,7 @@ import pytest
 
 from conference_leads_collector.config import AppSettings
 from conference_leads_collector.storage.db import create_engine, create_schema
+from conference_leads_collector.services.worker import _render_conference_pages
 from conference_leads_collector.web.app import create_app
 
 
@@ -123,6 +126,24 @@ async def test_admin_api_accepts_query_token_for_browser_actions(tmp_path: Path)
         )
         assert batch_response.status_code == 200
         assert batch_response.json() == {"processed": 1, "remaining": 0}
+
+
+@pytest.mark.anyio
+async def test_render_conference_pages_runs_browser_renderer_outside_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubRenderer:
+        def render_conference(self, seed_url: str):
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return [{"url": seed_url, "thread": threading.current_thread().name}]
+            raise RuntimeError("browser renderer ran inside event loop")
+
+    rendered_pages = _render_conference_pages("https://example.com/conf", renderer_factory=StubRenderer)
+
+    assert rendered_pages == [{"url": "https://example.com/conf", "thread": rendered_pages[0]["thread"]}]
+    assert rendered_pages[0]["thread"] != threading.current_thread().name
 
 
 @pytest.mark.anyio
