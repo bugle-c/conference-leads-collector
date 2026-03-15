@@ -145,6 +145,7 @@ async def test_dashboard_uses_compact_layout_and_rounded_ai_values() -> None:
         assert response.status_code == 200
         assert 'class="dashboard-main-grid"' in response.text
         assert 'class="action-card-grid"' in response.text
+        assert "grid-template-columns: minmax(280px, 1fr) minmax(520px, 2fr);" in response.text
         assert "22.20" in response.text
         assert "2.80" in response.text
         assert "22.20375925" not in response.text

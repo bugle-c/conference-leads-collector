@@ -63,6 +63,7 @@
 
     .hero {
       align-items: stretch;
+      grid-template-columns: minmax(280px, 1fr) minmax(520px, 2fr);
     }
 
     .hero-card {
@@ -187,6 +188,7 @@
     }
 
     @media (max-width: 1180px) {
+      .hero,
       .dashboard-main-grid {
         grid-template-columns: 1fr;
       }
