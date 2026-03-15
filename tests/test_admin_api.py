@@ -222,6 +222,33 @@ async def test_render_conference_pages_runs_browser_renderer_outside_event_loop(
 
 
 @pytest.mark.anyio
+async def test_admin_worker_actions_run_outside_event_loop_thread(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=StubFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+    route_threads: list[str] = []
+
+    def stub_process_next_job(*args, **kwargs):
+        route_threads.append(threading.current_thread().name)
+        return True
+
+    monkeypatch.setattr("conference_leads_collector.web.app.process_next_job", stub_process_next_job)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post("/api/jobs/run-once", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 200
+        assert response.json() == {"processed": True}
+
+    assert route_threads == [route_threads[0]]
+    assert route_threads[0] != threading.current_thread().name
+
+
+@pytest.mark.anyio
 async def test_speaker_and_sponsor_exports_are_downloadable(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
     create_schema(engine)

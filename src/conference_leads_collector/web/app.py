@@ -4,7 +4,10 @@ import csv
 import io
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
+from queue import Queue
+from threading import Thread
 
+import anyio
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -199,6 +202,40 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
                 "source_urls_by_id": source_urls_by_id,
             }
 
+    def _run_next_job_sync() -> bool:
+        return process_next_job(app.state.engine, fetcher=app.state.fetcher, settings=settings)
+
+    def _run_batch_sync(limit: int) -> tuple[int, int]:
+        processed = 0
+        for _ in range(limit):
+            if not _run_next_job_sync():
+                break
+            processed += 1
+
+        with session_scope(app.state.engine) as session:
+            remaining = sum(1 for job in JobRepository(session).list_jobs() if job.status == "pending")
+        return processed, remaining
+
+    async def _run_in_worker_thread(func, *args):
+        result_queue: Queue[tuple[bool, object]] = Queue(maxsize=1)
+
+        def runner() -> None:
+            try:
+                result = func(*args)
+            except Exception as exc:
+                result_queue.put((False, exc))
+                return
+            result_queue.put((True, result))
+
+        thread = Thread(target=runner, name="clc-web-worker", daemon=True)
+        thread.start()
+        while thread.is_alive():
+            await anyio.sleep(0.05)
+        success, payload = result_queue.get()
+        if success:
+            return payload
+        raise payload
+
     @app.get("/api/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "app_env": settings.app_env}
@@ -273,7 +310,7 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         token: str | None = None,
     ) -> dict[str, bool]:
         _require_token(authorization, settings, query_token=token)
-        processed = process_next_job(app.state.engine, fetcher=app.state.fetcher, settings=settings)
+        processed = await _run_in_worker_thread(_run_next_job_sync)
         return {"processed": processed}
 
     @app.post("/api/sources/{source_id}/requeue")
@@ -299,7 +336,7 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
                 f"Конференция поставлена в очередь повторно: {source.seed_url}",
                 f"Задача #{job.id} готова к повторной обработке",
             )
-        processed = process_next_job(app.state.engine, fetcher=app.state.fetcher, settings=settings)
+        processed = await _run_in_worker_thread(_run_next_job_sync)
         return {
             "queued": True,
             "processed": processed,
@@ -321,15 +358,7 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail="Invalid limit") from exc
 
-        processed = 0
-        for _ in range(limit):
-            if not process_next_job(app.state.engine, fetcher=app.state.fetcher, settings=settings):
-                break
-            processed += 1
-
-        with session_scope(app.state.engine) as session:
-            remaining = sum(1 for job in JobRepository(session).list_jobs() if job.status == "pending")
-
+        processed, remaining = await _run_in_worker_thread(_run_batch_sync, limit)
         return {"processed": processed, "remaining": remaining}
 
     @app.post("/api/tenchat/discover")
@@ -340,7 +369,12 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
     ) -> dict[str, int]:
         _require_token(authorization, settings, query_token=token)
         queries = payload.get("queries", [])
-        profiles_found = discover_tenchat_profiles(app.state.engine, queries, fetcher=app.state.fetcher)
+        profiles_found = await _run_in_worker_thread(
+            discover_tenchat_profiles,
+            app.state.engine,
+            queries,
+            app.state.fetcher,
+        )
         return {"profiles_found": profiles_found}
 
     @app.get("/exports/speakers.csv")
