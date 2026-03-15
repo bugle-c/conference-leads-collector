@@ -28,6 +28,7 @@
 - Admin navigation should preserve the `token` query parameter between pages; the current UI relies on query-token access for direct browser navigation, while API calls still use `Authorization: Bearer`.
 - Browser-triggered admin API actions must also accept `?token=` and the dashboard should append it to fetch URLs as a fallback; relying on `Authorization` alone is brittle behind some browser/proxy setups and manifests as client-side `Failed to fetch`.
 - Dashboard operator actions should give immediate UI feedback: toast notifications on click plus temporary button disabling/loading labels. The result box remains the detailed payload/log view, not the primary click acknowledgement.
+- Dashboard home layout should stay server-rendered and monochrome, but use stable grid sections (`hero`, actions, exports, result, activity) with mobile-safe wrapping; free-form button rows and oversized raw numbers caused panels to visually collide.
 - Current admin visual style is a Russian-language monochrome layout with a shared base template and restrained Apple-like spacing/typography instead of raw standalone tables.
 - Human-readable action logging is stored in the `activity_events` table and shown on the dashboard as the primary operator feedback layer for imports, worker runs, TenChat discovery, empty queues, and failures.
 - Conference crawling is no longer limited to the seed page: the worker now discovers relevant internal pages (`speakers`, `program`, `agenda`, `archive`, `experts`, `committee`, `sessions`, `tracks` and Russian variants), fetches several candidates on the same domain, and keeps the richest extraction result instead of trusting a JS-heavy showcase page.
@@ -54,6 +55,7 @@
 - Jinja `tojson` must not be embedded inside double-quoted HTML event attributes. The `/sources` requeue button broke in production because `onclick="... {{ url|tojson }} ..."` produced invalid markup; use `data-*` attributes plus JS event listeners instead.
 - When seed HTML is just a JS shell, worker candidate discovery should also probe `/sitemap.xml` and merge entities across multiple relevant pages (`program`, `archive`, `speakers`, etc.) instead of keeping only a single best page.
 - TenChat discovery should store broader marketing profiles and mark out-of-band follower counts for review; hard-dropping everything outside `1000..3000` caused frequent false zero-result runs.
+- AI credit values in the dashboard should be compactly rounded to 2 decimals before rendering; raw gateway floats like `22.20375925` make stat cards overflow and reduce readability.
 - Playwright adds ~500MB to Docker image (Chromium + system fonts). System deps installed in base stage for layer caching.
 - Cost per conference: ~$0.018 for vision (2-4 screenshots) + ~$0.003 for text supplement = ~$0.021 total. Old AI-first was ~$0.05+ (150K chars context).
 - Screenshots taken full-page with 2s lazy-load wait + scroll trigger. Max 3 subpages per conference (speakers, program, archive, sponsors).

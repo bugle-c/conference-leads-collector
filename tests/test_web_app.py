@@ -115,3 +115,34 @@ async def test_dashboard_includes_action_feedback_ui() -> None:
         assert 'id="toast-stack"' in response.text
         assert "showToast(" in response.text
         assert "runAction(" in response.text
+
+
+@pytest.mark.anyio
+async def test_dashboard_uses_compact_layout_and_rounded_ai_values() -> None:
+    settings = build_settings()
+    token = jwt.encode(
+        {"sub": "admin", "exp": int(time.time()) + 3600},
+        settings.admin_jwt_secret,
+        algorithm="HS256",
+    )
+    transport = httpx.ASGITransport(
+        app=create_app(
+            settings,
+            ai_credits_provider=lambda _settings: {
+                "enabled": True,
+                "balance": "22.20375925",
+                "total_used": "2.79624075",
+                "month_used": None,
+                "error": None,
+            },
+        )
+    )
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/", headers={"Authorization": f"Bearer {token}"})
+
+        assert response.status_code == 200
+        assert 'class="dashboard-main-grid"' in response.text
+        assert 'class="action-card-grid"' in response.text
+        assert "22.20" in response.text
+        assert "2.80" in response.text
+        assert "22.20375925" not in response.text

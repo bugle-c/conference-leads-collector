@@ -60,6 +60,161 @@
       border-color: rgba(163, 47, 47, 0.16);
       background: rgba(255, 246, 246, 0.98);
     }
+
+    .hero {
+      align-items: stretch;
+    }
+
+    .hero-card {
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .hero-card--stats {
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .stats-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: stretch;
+    }
+
+    .stat-card {
+      min-width: 0;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+    }
+
+    .stat-card--full {
+      grid-column: 1 / -1;
+    }
+
+    .stat-value {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.05;
+    }
+
+    .dashboard-main-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.95fr);
+      gap: 22px;
+      align-items: start;
+    }
+
+    .dashboard-primary,
+    .dashboard-secondary {
+      min-width: 0;
+      display: grid;
+      gap: 22px;
+    }
+
+    .action-card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .action-card {
+      min-width: 0;
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    .action-card textarea {
+      min-height: 176px;
+    }
+
+    .action-button-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .action-button-grid button,
+    .action-button-grid .ghost-link,
+    .export-grid .ghost-link {
+      width: 100%;
+      text-align: center;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    .export-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+    }
+
+    .result-box {
+      max-height: 360px;
+    }
+
+    .activity-feed {
+      display: grid;
+      gap: 12px;
+      max-height: 720px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .activity-card {
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.72);
+      min-width: 0;
+    }
+
+    .activity-card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .activity-title {
+      font-size: 16px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 1180px) {
+      .dashboard-main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      #toast-stack {
+        top: 14px;
+        right: 14px;
+        width: min(360px, calc(100vw - 20px));
+      }
+
+      .hero-meta {
+        gap: 10px;
+      }
+
+      .stats-grid,
+      .action-card-grid,
+      .action-button-grid,
+      .export-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .result-box,
+      .activity-feed {
+        max-height: none;
+      }
+    }
   </style>
 
   <section class="hero">
@@ -77,7 +232,7 @@
       </div>
     </article>
 
-    <aside class="hero-card">
+    <aside class="hero-card hero-card--stats">
       <div class="stats-grid">
         <div class="stat-card">
           <span class="stat-label">Конференции</span>
@@ -103,12 +258,12 @@
           <span class="stat-label">Потрачено AI</span>
           <span class="stat-value mono">{{ ai_gateway.total_used if ai_gateway and ai_gateway.total_used else "—" }}</span>
         </div>
-        <div class="stat-card" style="grid-column: 1 / -1;">
+        <div class="stat-card stat-card--full">
           <span class="stat-label">Профили TenChat</span>
           <span class="stat-value mono">{{ tenchat_count }}</span>
         </div>
       </div>
-      <div class="page-note" style="margin-top: 14px;">
+      <div class="page-note">
         {% if ai_gateway and ai_gateway.error %}
           {{ ai_gateway.error }}
         {% elif ai_gateway and ai_gateway.enabled %}
@@ -120,78 +275,81 @@
     </aside>
   </section>
 
-  <section class="content-grid">
-    <div class="action-grid">
-      <section class="panel">
+  <section class="dashboard-main-grid">
+    <div class="dashboard-primary">
+      <div class="action-card-grid">
+        <section class="panel action-card">
         <h2>Загрузка конференций</h2>
         <p>Вставь список URL по одному на строку. После импорта источники сразу попадут в рабочую базу.</p>
         <textarea id="seed-urls" placeholder="https://aisummit.ru&#10;https://mergeconf.ru"></textarea>
-        <div class="button-row">
+        <div class="action-button-grid">
           <button class="button-primary" onclick="importSeeds(event)">Импортировать URL</button>
         </div>
-      </section>
+        </section>
 
-      <section class="panel">
+        <section class="panel action-card">
         <h2>Запуск обработки</h2>
         <p>Можно прогонять задачи по одной, пачкой или полностью. Это удобнее для реального объёма, чем один клик на один job.</p>
-        <div class="button-row">
+        <div class="action-button-grid">
           <button class="button-primary" onclick="runWorker(event)">Запустить один шаг</button>
           <button class="button-secondary" onclick="runBatch(event, 10)">Запустить 10</button>
           <button class="button-secondary" onclick="runBatch(event, 200)">Запустить всё</button>
           <a class="ghost-link" href="/jobs?token={{ token or '' }}">Открыть очередь</a>
         </div>
-      </section>
+        </section>
 
-      <section class="panel">
+        <section class="panel action-card">
         <h2>Поиск TenChat</h2>
         <p>Запусти discovery по маркетинговым ролям и публичным профилям. Один запрос на строку.</p>
         <textarea id="tenchat-queries" placeholder="директор по маркетингу&#10;head of marketing"></textarea>
-        <div class="button-row">
+        <div class="action-button-grid">
           <button class="button-primary" onclick="discoverTenchat(event)">Запустить поиск</button>
+        </div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Выгрузки</h2>
+            <p>Отдельные таблицы и Excel-файлы без перегруженной страницы конференций.</p>
+          </div>
+        </div>
+        <div class="export-grid">
+          <a class="ghost-link" href="/speakers?token={{ token or '' }}">Открыть спикеров</a>
+          <a class="ghost-link" href="/sponsors?token={{ token or '' }}">Открыть спонсоров</a>
+          <a class="ghost-link" href="/exports/speakers.xlsx?token={{ token or '' }}">Скачать speakers.xlsx</a>
+          <a class="ghost-link" href="/exports/sponsors.xlsx?token={{ token or '' }}">Скачать sponsors.xlsx</a>
+          <a class="ghost-link" href="/exports/tenchat.xlsx?token={{ token or '' }}">Скачать tenchat.xlsx</a>
         </div>
       </section>
     </div>
 
-    <section class="panel">
-      <div class="section-head">
-        <div>
-          <h2>Выгрузки</h2>
-          <p>Отдельные таблицы и CSV для спикеров и спонсоров без перегруженной страницы конференций.</p>
+    <div class="dashboard-secondary">
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Результат последнего действия</h2>
+            <p>Сюда выводится ответ API после импорта, запуска worker или поиска TenChat.</p>
+          </div>
         </div>
-      </div>
-      <div class="button-row">
-        <a class="ghost-link" href="/speakers?token={{ token or '' }}">Открыть спикеров</a>
-        <a class="ghost-link" href="/sponsors?token={{ token or '' }}">Открыть спонсоров</a>
-        <a class="ghost-link" href="/exports/speakers.xlsx?token={{ token or '' }}">Скачать speakers.xlsx</a>
-        <a class="ghost-link" href="/exports/sponsors.xlsx?token={{ token or '' }}">Скачать sponsors.xlsx</a>
-        <a class="ghost-link" href="/exports/tenchat.xlsx?token={{ token or '' }}">Скачать tenchat.xlsx</a>
-      </div>
-    </section>
+        <pre id="result-box" class="result-box">Пока действий не было.</pre>
+      </section>
 
-    <section class="panel">
-      <div class="section-head">
-        <div>
-          <h2>Результат последнего действия</h2>
-          <p>Сюда выводится ответ API после импорта, запуска worker или поиска TenChat.</p>
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Журнал действий</h2>
+            <p>Понятная лента событий, чтобы сразу видеть, что уже запущено и чем всё закончилось.</p>
+          </div>
         </div>
-      </div>
-      <pre id="result-box" class="result-box">Пока действий не было.</pre>
-    </section>
-
-    <section class="panel">
-      <div class="section-head">
-        <div>
-          <h2>Журнал действий</h2>
-          <p>Понятная лента событий, чтобы сразу видеть, что уже запущено и чем всё закончилось.</p>
-        </div>
-      </div>
-      {% if activity_events %}
-        <div style="display:grid; gap:12px;">
+        {% if activity_events %}
+        <div class="activity-feed">
           {% for event in activity_events %}
-            <article style="padding:18px 20px; border:1px solid var(--line); border-radius:18px; background:rgba(255,255,255,0.72);">
-              <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+            <article class="activity-card">
+              <div class="activity-card-head">
                 <div>
-                  <div style="font-size:16px; line-height:1.4;">{{ event.title }}</div>
+                  <div class="activity-title">{{ event.title }}</div>
                   {% if event.details %}
                     <div class="page-note">{{ event.details }}</div>
                   {% endif %}
@@ -201,10 +359,11 @@
             </article>
           {% endfor %}
         </div>
-      {% else %}
-        <div class="empty-state">Пока нет событий. После первого действия журнал начнёт заполняться автоматически.</div>
-      {% endif %}
-    </section>
+        {% else %}
+          <div class="empty-state">Пока нет событий. После первого действия журнал начнёт заполняться автоматически.</div>
+        {% endif %}
+      </section>
+    </div>
   </section>
 {% endblock %}
 

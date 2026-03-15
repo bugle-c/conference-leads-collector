@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
@@ -126,10 +127,47 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
+    def _format_dashboard_number(value: object) -> object:
+        if value in (None, ""):
+            return value
+        if isinstance(value, (int, float)):
+            decimal_value = Decimal(str(value))
+            return f"{decimal_value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):f}"
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return value
+            prefix = ""
+            suffix = ""
+            numeric = stripped
+            if stripped[0] in "$€£":
+                prefix = stripped[0]
+                numeric = stripped[1:]
+            try:
+                decimal_value = Decimal(numeric)
+            except InvalidOperation:
+                return value
+            rounded = decimal_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            return f"{prefix}{rounded:f}{suffix}"
+        return value
+
+    def _format_ai_gateway(ai_gateway: object) -> object:
+        if ai_gateway is None:
+            return None
+        if isinstance(ai_gateway, dict):
+            formatted = dict(ai_gateway)
+            formatted["balance"] = _format_dashboard_number(formatted.get("balance"))
+            formatted["total_used"] = _format_dashboard_number(formatted.get("total_used"))
+            formatted["month_used"] = _format_dashboard_number(formatted.get("month_used"))
+            return formatted
+        for field in ("balance", "total_used", "month_used"):
+            setattr(ai_gateway, field, _format_dashboard_number(getattr(ai_gateway, field, None)))
+        return ai_gateway
+
     def _load_dashboard_context(token: str | None = None, current_page: str = "dashboard") -> dict:
         ai_gateway = None
         if current_page == "dashboard":
-            ai_gateway = app.state.ai_credits_provider(settings)
+            ai_gateway = _format_ai_gateway(app.state.ai_credits_provider(settings))
         with session_scope(app.state.engine) as session:
             sources = ConferenceSourceRepository(session).list_sources()
             jobs = JobRepository(session).list_jobs()
