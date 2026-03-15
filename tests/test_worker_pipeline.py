@@ -162,7 +162,7 @@ def test_process_next_job_marks_noise_only_pages_as_failed(tmp_path: Path) -> No
         source = sources.list_sources()[0]
         job = jobs.list_jobs()[0]
 
-        assert source.status == "pending"
+        assert source.status == "failed"
         assert source.speakers == []
         assert source.sponsors == []
         assert job.status == "failed"

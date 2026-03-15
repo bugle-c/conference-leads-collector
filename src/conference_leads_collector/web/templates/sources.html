@@ -1,6 +1,51 @@
 {% extends "base.html" %}
 
 {% block content %}
+  <div id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+  <style>
+    #toast-stack {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: grid;
+      gap: 10px;
+      width: min(360px, calc(100vw - 28px));
+      pointer-events: none;
+    }
+
+    .toast {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: var(--shadow);
+      transform: translateY(-8px);
+      opacity: 0;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+
+    .toast.is-visible {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast-title {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .toast-copy {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+  </style>
+
   <section class="hero" style="grid-template-columns: minmax(0, 1fr);">
     <article class="hero-card">
       <div class="eyebrow">Конференции</div>
@@ -36,6 +81,7 @@
             <th>Спикеры</th>
             <th>Спонсоры</th>
             <th>Preview</th>
+            <th>Действия</th>
           </tr>
         </thead>
         <tbody>
@@ -67,6 +113,15 @@
                   {% endif %}
                 </div>
               </td>
+              <td>
+                {% if source.id in queued_source_ids %}
+                  <span class="page-note">Уже в очереди</span>
+                {% else %}
+                  <button class="button-secondary" onclick="requeueSource(event, {{ source.id }}, {{ source.seed_url|tojson }})">
+                    Запустить заново
+                  </button>
+                {% endif %}
+              </td>
             </tr>
           {% endfor %}
         </tbody>
@@ -76,4 +131,71 @@
       <div class="empty-state">Источники ещё не загружены. Вернись в обзор и импортируй список конференций.</div>
     {% endif %}
   </section>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    async function authHeaders() {
+      const params = new URLSearchParams(window.location.search);
+      const queryToken = params.get("token");
+      const savedToken = localStorage.getItem("clc_token");
+      const token = queryToken || savedToken || prompt("Вставь JWT токен");
+      if (token) {
+        localStorage.setItem("clc_token", token);
+      }
+      return { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+    }
+
+    function apiUrl(path) {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token") || localStorage.getItem("clc_token");
+      if (!token) {
+        return path;
+      }
+      const url = new URL(path, window.location.origin);
+      url.searchParams.set("token", token);
+      return `${url.pathname}?${url.searchParams.toString()}`;
+    }
+
+    function showToast(title, copy = "") {
+      const stack = document.getElementById("toast-stack");
+      const toast = document.createElement("div");
+      toast.className = "toast";
+      toast.innerHTML = `<span class="toast-title">${title}</span>${copy ? `<span class="toast-copy">${copy}</span>` : ""}`;
+      stack.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add("is-visible"));
+      window.setTimeout(() => {
+        toast.classList.remove("is-visible");
+        window.setTimeout(() => toast.remove(), 180);
+      }, 2600);
+    }
+
+    async function requeueSource(event, sourceId, seedUrl) {
+      const button = event.currentTarget;
+      const initialLabel = button.textContent;
+      button.disabled = true;
+      button.textContent = "Ставлю в очередь...";
+      showToast("Повторный запуск", seedUrl);
+      try {
+        const headers = await authHeaders();
+        const response = await fetch(apiUrl(`/api/sources/${sourceId}/requeue`), {
+          method: "POST",
+          headers,
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          showToast("Не удалось поставить в очередь", payload.detail || `HTTP ${response.status}`);
+          button.disabled = false;
+          button.textContent = initialLabel;
+          return;
+        }
+        showToast("Конференция поставлена в очередь", `Задача #${payload.job_id}`);
+        window.setTimeout(() => window.location.reload(), 500);
+      } catch (error) {
+        showToast("Не удалось поставить в очередь", error instanceof Error ? error.message : "Ошибка сети");
+        button.disabled = false;
+        button.textContent = initialLabel;
+      }
+    }
+  </script>
 {% endblock %}

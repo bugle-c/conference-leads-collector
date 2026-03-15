@@ -27,6 +27,7 @@
             <th>ID</th>
             <th>Тип</th>
             <th>Цель</th>
+            <th>URL</th>
             <th>Статус</th>
             <th>Ошибка</th>
           </tr>
@@ -37,6 +38,7 @@
               <td class="mono">{{ job.id }}</td>
               <td>{{ job.job_type }}</td>
               <td class="mono">{{ job.target_id }}</td>
+              <td class="text-wrap">{{ source_urls_by_id.get(job.target_id, "Не найдено") }}</td>
               <td><span class="status-pill">{{ job.status }}</span></td>
               <td class="text-wrap">{{ job.last_error or "Без ошибок" }}</td>
             </tr>

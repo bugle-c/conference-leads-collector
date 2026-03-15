@@ -148,6 +148,8 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
             )
             return True
 
+        sources.mark_running(source.id)
+
         try:
             events.add_event(
                 f"Запущена обработка конференции {source.seed_url}",
@@ -233,6 +235,7 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
 
             if not _has_high_quality_entities(extracted):
                 jobs.mark_failed(job, "No high-quality entities found")
+                sources.mark_failed(source.id, "No high-quality entities found")
                 events.add_event(
                     f"Обработка {source.seed_url} не дала результата",
                     f"HTTP {status_code}, задача #{job.id} не содержит валидных спикеров или спонсоров",
@@ -255,6 +258,7 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
             )
         except Exception as exc:
             jobs.mark_failed(job, str(exc))
+            sources.mark_failed(source.id, str(exc))
             events.add_event(
                 f"Обработка {source.seed_url} завершилась с ошибкой",
                 str(exc),

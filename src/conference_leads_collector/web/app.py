@@ -135,6 +135,12 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
             jobs = JobRepository(session).list_jobs()
             tenchat_profiles = TenchatProfileRepository(session).list_profiles()
             activity_events = ActivityEventRepository(session).list_recent()
+            queued_source_ids = {
+                job.target_id
+                for job in jobs
+                if job.job_type == "crawl_conference" and job.status in {"pending", "running"}
+            }
+            source_urls_by_id = {source.id: source.seed_url for source in sources}
             return {
                 "page_title": "Панель сбора конференций",
                 "sources": sources,
@@ -151,6 +157,8 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
                 "ai_gateway": ai_gateway,
                 "token": token,
                 "current_page": current_page,
+                "queued_source_ids": queued_source_ids,
+                "source_urls_by_id": source_urls_by_id,
             }
 
     @app.get("/api/health")
@@ -229,6 +237,29 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         _require_token(authorization, settings, query_token=token)
         processed = process_next_job(app.state.engine, fetcher=app.state.fetcher, settings=settings)
         return {"processed": processed}
+
+    @app.post("/api/sources/{source_id}/requeue")
+    async def requeue_source(
+        source_id: int,
+        authorization: str | None = Header(default=None),
+        token: str | None = None,
+    ) -> dict[str, int | bool | str]:
+        _require_token(authorization, settings, query_token=token)
+        with session_scope(app.state.engine) as session:
+            sources_repo = ConferenceSourceRepository(session)
+            jobs_repo = JobRepository(session)
+            events_repo = ActivityEventRepository(session)
+            source = sources_repo.get_source(source_id)
+            if source is None:
+                raise HTTPException(status_code=404, detail="Conference source not found")
+
+            job = jobs_repo.enqueue_crawl(source.id, force=True, priority=0)
+            sources_repo.mark_pending(source.id)
+            events_repo.add_event(
+                f"Конференция поставлена в очередь повторно: {source.seed_url}",
+                f"Задача #{job.id} готова к повторной обработке",
+            )
+            return {"queued": True, "source_id": source.id, "job_id": job.id, "seed_url": source.seed_url}
 
     @app.post("/api/jobs/run-batch")
     async def run_batch(

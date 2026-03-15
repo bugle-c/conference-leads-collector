@@ -90,6 +90,31 @@ class ConferenceSourceRepository:
             .where(ConferenceSource.id == source_id)
         )
 
+    def mark_pending(self, source_id: int) -> ConferenceSource:
+        source = self.get_source(source_id)
+        if source is None:
+            raise ValueError(f"Conference source {source_id} not found")
+        source.status = "pending"
+        self.session.flush()
+        return source
+
+    def mark_running(self, source_id: int) -> ConferenceSource:
+        source = self.get_source(source_id)
+        if source is None:
+            raise ValueError(f"Conference source {source_id} not found")
+        source.status = "running"
+        self.session.flush()
+        return source
+
+    def mark_failed(self, source_id: int, notes: str | None = None) -> ConferenceSource:
+        source = self.get_source(source_id)
+        if source is None:
+            raise ValueError(f"Conference source {source_id} not found")
+        source.status = "failed"
+        source.notes = notes
+        self.session.flush()
+        return source
+
     def mark_crawled(
         self,
         source_id: int,
@@ -160,7 +185,7 @@ class JobRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def enqueue_crawl(self, source_id: int) -> CrawlJob:
+    def enqueue_crawl(self, source_id: int, force: bool = False, priority: int | None = None) -> CrawlJob:
         existing = self.session.scalar(
             select(CrawlJob).where(
                 CrawlJob.target_id == source_id,
@@ -168,10 +193,12 @@ class JobRepository:
                 CrawlJob.status.in_(("pending", "running")),
             )
         )
-        if existing is not None:
+        if existing is not None and not force:
             return existing
 
         job = CrawlJob(target_id=source_id)
+        if priority is not None:
+            job.priority = priority
         self.session.add(job)
         self.session.flush()
         return job

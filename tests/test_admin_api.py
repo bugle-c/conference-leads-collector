@@ -129,6 +129,54 @@ async def test_admin_api_accepts_query_token_for_browser_actions(tmp_path: Path)
 
 
 @pytest.mark.anyio
+async def test_operator_can_requeue_existing_conference(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=StubFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        import_response = await client.post(
+            "/api/sources/import",
+            json={"urls": ["https://example.com/conf"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert import_response.status_code == 200
+
+        first_run = await client.post(
+            "/api/jobs/run-once",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert first_run.status_code == 200
+        assert first_run.json() == {"processed": True}
+
+        requeue_response = await client.post(
+            "/api/sources/1/requeue",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert requeue_response.status_code == 200
+        assert requeue_response.json()["queued"] is True
+        assert requeue_response.json()["source_id"] == 1
+
+        second_run = await client.post(
+            "/api/jobs/run-once",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert second_run.status_code == 200
+        assert second_run.json() == {"processed": True}
+
+        sources_page = await client.get("/sources", headers={"Authorization": f"Bearer {token}"})
+        assert sources_page.status_code == 200
+        assert "Запустить заново" in sources_page.text or "Уже в очереди" in sources_page.text
+
+        jobs_page = await client.get("/jobs", headers={"Authorization": f"Bearer {token}"})
+        assert jobs_page.status_code == 200
+        assert "https://example.com/conf" in jobs_page.text
+
+
+@pytest.mark.anyio
 async def test_render_conference_pages_runs_browser_renderer_outside_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
