@@ -101,6 +101,31 @@ async def test_run_batch_processes_multiple_jobs(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_admin_api_accepts_query_token_for_browser_actions(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=StubFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        import_response = await client.post(
+            f"/api/sources/import?token={token}",
+            json={"urls": ["https://example.com/conf"]},
+        )
+        assert import_response.status_code == 200
+        assert import_response.json() == {"inserted": 1, "skipped": 0}
+
+        batch_response = await client.post(
+            f"/api/jobs/run-batch?token={token}",
+            json={"limit": 10},
+        )
+        assert batch_response.status_code == 200
+        assert batch_response.json() == {"processed": 1, "remaining": 0}
+
+
+@pytest.mark.anyio
 async def test_speaker_and_sponsor_exports_are_downloadable(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
     create_schema(engine)

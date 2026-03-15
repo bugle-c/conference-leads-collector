@@ -200,8 +200,12 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         return templates.TemplateResponse(request, "tenchat.html", context)
 
     @app.post("/api/sources/import")
-    async def import_sources(payload: dict, authorization: str | None = Header(default=None)) -> dict[str, int]:
-        _require_token(authorization, settings)
+    async def import_sources(
+        payload: dict,
+        authorization: str | None = Header(default=None),
+        token: str | None = None,
+    ) -> dict[str, int]:
+        _require_token(authorization, settings, query_token=token)
         urls = payload.get("urls", [])
         with session_scope(app.state.engine) as session:
             sources_repo = ConferenceSourceRepository(session)
@@ -218,14 +222,21 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         return result
 
     @app.post("/api/jobs/run-once")
-    async def run_once(authorization: str | None = Header(default=None)) -> dict[str, bool]:
-        _require_token(authorization, settings)
+    async def run_once(
+        authorization: str | None = Header(default=None),
+        token: str | None = None,
+    ) -> dict[str, bool]:
+        _require_token(authorization, settings, query_token=token)
         processed = process_next_job(app.state.engine, fetcher=app.state.fetcher, settings=settings)
         return {"processed": processed}
 
     @app.post("/api/jobs/run-batch")
-    async def run_batch(payload: dict, authorization: str | None = Header(default=None)) -> dict[str, int]:
-        _require_token(authorization, settings)
+    async def run_batch(
+        payload: dict,
+        authorization: str | None = Header(default=None),
+        token: str | None = None,
+    ) -> dict[str, int]:
+        _require_token(authorization, settings, query_token=token)
         requested_limit = payload.get("limit", 10)
         try:
             limit = max(1, min(int(requested_limit), 200))
@@ -244,8 +255,12 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         return {"processed": processed, "remaining": remaining}
 
     @app.post("/api/tenchat/discover")
-    async def discover_tenchat(payload: dict, authorization: str | None = Header(default=None)) -> dict[str, int]:
-        _require_token(authorization, settings)
+    async def discover_tenchat(
+        payload: dict,
+        authorization: str | None = Header(default=None),
+        token: str | None = None,
+    ) -> dict[str, int]:
+        _require_token(authorization, settings, query_token=token)
         queries = payload.get("queries", [])
         profiles_found = discover_tenchat_profiles(app.state.engine, queries, fetcher=app.state.fetcher)
         return {"profiles_found": profiles_found}

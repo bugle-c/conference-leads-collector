@@ -164,6 +164,17 @@
       return { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
     }
 
+    function apiUrl(path) {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token") || localStorage.getItem("clc_token");
+      if (!token) {
+        return path;
+      }
+      const url = new URL(path, window.location.origin);
+      url.searchParams.set("token", token);
+      return `${url.pathname}?${url.searchParams.toString()}`;
+    }
+
     async function handleResponse(response) {
       let payload;
       try {
@@ -177,19 +188,19 @@
     async function importSeeds() {
       const urls = document.getElementById("seed-urls").value.split(/\n+/).map(v => v.trim()).filter(Boolean);
       const headers = await authHeaders();
-      const response = await fetch("/api/sources/import", { method: "POST", headers, body: JSON.stringify({ urls }) });
+      const response = await fetch(apiUrl("/api/sources/import"), { method: "POST", headers, body: JSON.stringify({ urls }) });
       await handleResponse(response);
     }
 
     async function runWorker() {
       const headers = await authHeaders();
-      const response = await fetch("/api/jobs/run-once", { method: "POST", headers });
+      const response = await fetch(apiUrl("/api/jobs/run-once"), { method: "POST", headers });
       await handleResponse(response);
     }
 
     async function runBatch(limit) {
       const headers = await authHeaders();
-      const response = await fetch("/api/jobs/run-batch", {
+      const response = await fetch(apiUrl("/api/jobs/run-batch"), {
         method: "POST",
         headers,
         body: JSON.stringify({ limit }),
@@ -200,7 +211,7 @@
     async function discoverTenchat() {
       const queries = document.getElementById("tenchat-queries").value.split(/\n+/).map(v => v.trim()).filter(Boolean);
       const headers = await authHeaders();
-      const response = await fetch("/api/tenchat/discover", { method: "POST", headers, body: JSON.stringify({ queries }) });
+      const response = await fetch(apiUrl("/api/tenchat/discover"), { method: "POST", headers, body: JSON.stringify({ queries }) });
       await handleResponse(response);
     }
   </script>
