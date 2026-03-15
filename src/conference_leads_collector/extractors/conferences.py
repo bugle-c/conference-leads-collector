@@ -113,6 +113,11 @@ SPEAKER_NOISE_PARTS = (
     "подписаться",
     "subscribe",
     "download",
+    "подробнее",
+    "читать далее",
+    "узнать больше",
+    "more",
+    "details",
 )
 ORG_WORDS = {
     "university",
@@ -173,6 +178,20 @@ SPONSOR_NOISE_EXACT = {
     "aij junior",
     "aij deep dive",
     "loader",
+    "faq",
+    "оферта",
+    "темы",
+    "где и когда",
+    "website icon",
+    "icon",
+    "favicon",
+    "logo",
+    "стать спикером",
+    "стать партнером",
+    "стать партнёром",
+    "стать спонсором",
+    "сертификат участника",
+    "условия рассрочки",
 }
 SPONSOR_NOISE_PARTS = (
     "@",
@@ -184,6 +203,11 @@ SPONSOR_NOISE_PARTS = (
     "archive",
     "vacanc",
     "tarif",
+    "купить ",
+    "видеозапис",
+    "презентации ",
+    "чат в ",
+    "докладов ",
 )
 
 
@@ -393,6 +417,12 @@ def _extract_sponsors(soup: BeautifulSoup) -> list[SponsorResult]:
             continue
 
         explicit_cards = node.select(".sponsor-card, .partner-card, .partner, .sponsor, li")
+        # Filter out navigation menu items (WordPress menu-item, nav li, etc.)
+        explicit_cards = [
+            c for c in explicit_cards
+            if not any("menu-item" in cls or "nav" in cls for cls in c.get("class", []))
+            and not c.find_parent("nav")
+        ]
         # Only use img fallback inside sections with explicit sponsor/partner headings
         cards = explicit_cards or (node.select("img") if has_sponsor_heading else [])
 

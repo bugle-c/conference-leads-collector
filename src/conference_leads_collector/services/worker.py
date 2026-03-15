@@ -97,8 +97,8 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
                 f"Задача #{job.id} взята в работу",
             )
             status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
-            # Use AI refine only when heuristics found few speakers
-            if active_ai_refiner is not None and len(extracted.speakers) < 3:
+            # Always use AI refine when available — heuristics alone produce too much garbage
+            if active_ai_refiner is not None:
                 try:
                     refined = active_ai_refiner.refine(source.seed_url, html, extracted)
                 except Exception as exc:
@@ -112,7 +112,7 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
                         extracted = refined
                         events.add_event(
                             f"AI уточнил данные для {source.seed_url}",
-                            f"Задача #{job.id}: эвристика дала мало результатов, AI помог",
+                            f"Задача #{job.id}: AI очистка применена",
                         )
             extracted = sanitize_conference_data(extracted)
             if not _has_high_quality_entities(extracted):
