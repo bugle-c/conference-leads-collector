@@ -79,6 +79,51 @@ class ConferenceSourceRepository:
             )
         )
 
+    def reconcile_statuses(self) -> None:
+        sources = list(self.session.scalars(select(ConferenceSource).order_by(ConferenceSource.id.asc())))
+        if not sources:
+            return
+
+        source_ids = [source.id for source in sources]
+        jobs = list(
+            self.session.scalars(
+                select(CrawlJob)
+                .where(
+                    CrawlJob.job_type == "crawl_conference",
+                    CrawlJob.target_id.in_(source_ids),
+                )
+                .order_by(CrawlJob.target_id.asc(), CrawlJob.id.desc())
+            )
+        )
+
+        latest_jobs: dict[int, CrawlJob] = {}
+        active_statuses: dict[int, str] = {}
+
+        for job in jobs:
+            latest_jobs.setdefault(job.target_id, job)
+            if job.status == "running":
+                active_statuses[job.target_id] = "running"
+            elif job.status == "pending" and job.target_id not in active_statuses:
+                active_statuses[job.target_id] = "pending"
+
+        for source in sources:
+            if source.id in active_statuses:
+                source.status = active_statuses[source.id]
+                continue
+
+            latest_job = latest_jobs.get(source.id)
+            if source.last_crawled_at is not None:
+                source.status = "crawled"
+                continue
+            if latest_job is not None and latest_job.status == "failed":
+                source.status = "failed"
+                source.notes = latest_job.last_error
+                continue
+            if latest_job is not None and latest_job.status == "done":
+                source.status = "crawled"
+
+        self.session.flush()
+
     def get_source(self, source_id: int) -> ConferenceSource | None:
         return self.session.scalar(
             select(ConferenceSource)

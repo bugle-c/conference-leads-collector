@@ -172,7 +172,9 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
         if current_page == "dashboard":
             ai_gateway = _format_ai_gateway(app.state.ai_credits_provider(settings))
         with session_scope(app.state.engine) as session:
-            sources = ConferenceSourceRepository(session).list_sources()
+            sources_repo = ConferenceSourceRepository(session)
+            sources_repo.reconcile_statuses()
+            sources = sources_repo.list_sources()
             jobs = JobRepository(session).list_jobs()
             tenchat_profiles = TenchatProfileRepository(session).list_profiles()
             activity_events = ActivityEventRepository(session).list_recent()
