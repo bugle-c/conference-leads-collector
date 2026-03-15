@@ -134,6 +134,27 @@ ORG_WORDS = {
     "samsung",
     "carnegie",
     "mellon",
+    "bank",
+    "банк",
+    "ниу",
+    "вшэ",
+    "мгу",
+    "втб",
+    "ai",
+    "ds",
+    "lead",
+    "senior",
+    "junior",
+    "mts",
+    "институт",
+    "университет",
+    "академия",
+    "лаборатория",
+    "фонд",
+    "группа",
+    "холдинг",
+    "корпорация",
+    "airi",
 }
 SPONSOR_SECTION_KEYWORDS = ("sponsor", "partner", "спонсор", "партнер")
 SPONSOR_NOISE_EXACT = {
@@ -249,6 +270,16 @@ def _is_probably_speaker_name(value: str) -> bool:
     tokens = [token.lower() for token in normalized.split()]
     if all(token in ORG_WORDS for token in tokens):
         return False
+    # Reject if any token is an org word (catches "Институт AIRI", "Банк ВТБ")
+    if any(token in ORG_WORDS for token in tokens):
+        return False
+    # Reject job title patterns (no capitalized words pattern, starts with lowercase role)
+    lowered_stripped = normalized.strip()
+    if any(lowered_stripped.lower().startswith(prefix) for prefix in (
+        "руководитель", "директор", "менеджер", "начальник", "заместитель",
+        "head of", "chief", "director", "manager", "cto", "ceo", "coo", "cfo",
+    )):
+        return False
     return True
 
 
@@ -292,13 +323,16 @@ def sanitize_conference_data(result: ConferenceExtractionResult) -> ConferenceEx
         if not _is_probably_speaker_name(normalized_name):
             continue
         dedupe_key = normalized_name.lower()
-        if dedupe_key in seen_speakers:
+        # Also dedupe by sorted tokens: "Иванов Иван" == "Иван Иванов"
+        sorted_key = " ".join(sorted(dedupe_key.split()))
+        if dedupe_key in seen_speakers or sorted_key in seen_speakers:
             continue
         speaker.full_name = normalized_name
         if not speaker.first_name or not speaker.last_name:
             speaker.first_name, speaker.last_name = _split_name(normalized_name)
         sanitized_speakers.append(speaker)
         seen_speakers.add(dedupe_key)
+        seen_speakers.add(sorted_key)
 
     sanitized_sponsors: list[SponsorResult] = []
     seen_sponsors: set[str] = set()
@@ -409,12 +443,19 @@ def _extract_sponsors(soup: BeautifulSoup) -> list[SponsorResult]:
     results: list[SponsorResult] = []
     seen: set[str] = set()
 
-    containers = soup.select(".sponsor-card, .partner-card, .partner, .sponsor, section, div")
+    # Explicit sponsor/partner class containers — always process
+    explicit_containers = soup.select(".sponsor-card, .partner-card, .partner, .sponsor")
+    # Generic section/div — only process if they have a sponsor/partner heading
+    generic_containers = []
+    for node in soup.find_all(["section", "div"]):
+        heading = _heading_text(node)
+        if heading and any(key in heading for key in SPONSOR_SECTION_KEYWORDS):
+            generic_containers.append(node)
+
+    containers = explicit_containers + generic_containers
     for node in containers:
         heading = _heading_text(node)
         has_sponsor_heading = heading and any(key in heading for key in SPONSOR_SECTION_KEYWORDS)
-        if heading and not has_sponsor_heading:
-            continue
 
         explicit_cards = node.select(".sponsor-card, .partner-card, .partner, .sponsor, li")
         # Filter out navigation menu items (WordPress menu-item, nav li, etc.)
