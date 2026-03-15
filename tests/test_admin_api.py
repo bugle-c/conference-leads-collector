@@ -46,6 +46,47 @@ class ArchiveIndexFetcher:
         return 404, ""
 
 
+class NestedArchiveFetcher:
+    def fetch(self, url: str):
+        if url == "https://archive.example.com":
+            return 200, """
+            <html>
+              <body>
+                <a href="/archive">Archive</a>
+                <a href="/program">Program</a>
+              </body>
+            </html>
+            """
+        if url == "https://archive.example.com/sitemap.xml":
+            return 200, """
+            <urlset>
+              <url><loc>https://archive.example.com/archive</loc></url>
+              <url><loc>https://archive.example.com/program</loc></url>
+            </urlset>
+            """
+        if url == "https://archive.example.com/archive":
+            return 200, """
+            <html>
+              <body>
+                <script>
+                  window.__DATA__ = {
+                    "items": ["/events/forum-2023", "/events/forum-2024", "/events/forum-2025"]
+                  };
+                </script>
+              </body>
+            </html>
+            """
+        if url == "https://archive.example.com/program":
+            return 200, """
+            <html>
+              <body>
+                <a href="/events/forum-2024">Forum 2024</a>
+              </body>
+            </html>
+            """
+        return 404, ""
+
+
 def build_settings() -> AppSettings:
     return AppSettings(
         app_env="test",
@@ -204,6 +245,31 @@ async def test_import_sources_expands_archive_index_with_default_web_fetcher(
         )
         assert import_response.status_code == 200
         assert import_response.json() == {"inserted": 3, "skipped": 0}
+
+
+@pytest.mark.anyio
+async def test_import_sources_expands_nested_archive_hubs_into_conference_urls(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=NestedArchiveFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        import_response = await client.post(
+            "/api/sources/import",
+            json={"urls": ["https://archive.example.com"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert import_response.status_code == 200
+        assert import_response.json() == {"inserted": 3, "skipped": 0}
+
+        sources_page = await client.get("/sources", headers={"Authorization": f"Bearer {token}"})
+        assert sources_page.status_code == 200
+        assert "https://archive.example.com/events/forum-2023" in sources_page.text
+        assert "https://archive.example.com/events/forum-2024" in sources_page.text
+        assert "https://archive.example.com/events/forum-2025" in sources_page.text
 
 
 @pytest.mark.anyio

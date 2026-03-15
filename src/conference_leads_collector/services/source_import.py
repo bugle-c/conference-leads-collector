@@ -14,6 +14,7 @@ class Fetcher(Protocol):
 YEAR_RE = re.compile(r"(20\d{2})")
 ARCHIVE_HINTS = ("archive", "архив", "events", "event", "program", "agenda", "conference", "conf", "summit", "forum")
 NOISE_HINTS = ("contact", "contacts", "about", "privacy", "policy", "login", "signin", "signup", "career", "vacancy")
+PATH_CANDIDATE_RE = re.compile(r'(?:"|\')((?:https?://[^"\']+)|(?:/[A-Za-z0-9._~:/?#\[\]@!$&()*+,;=%-]+))(?:"|\')')
 
 
 def normalize_import_url(raw_url: str) -> str:
@@ -61,31 +62,81 @@ def _discover_archive_candidates(seed_url: str, html: str, fetcher: Fetcher) -> 
     parsed_seed = urlsplit(seed_url)
     candidate_urls: list[str] = []
     seen: set[str] = set()
+    hub_urls: list[str] = []
+    hub_seen: set[str] = set()
+
+    for resolved, text in _extract_page_links(seed_url, html):
+        if urlsplit(resolved).netloc != parsed_seed.netloc:
+            continue
+        if _looks_like_conference_page(resolved, text):
+            if resolved != seed_url and resolved not in seen:
+                seen.add(resolved)
+                candidate_urls.append(resolved)
+            continue
+        if _looks_like_archive_hub_page(resolved, text) and resolved not in hub_seen:
+            hub_seen.add(resolved)
+            hub_urls.append(resolved)
+
+    for sitemap_url in _discover_sitemap_candidates(seed_url, fetcher):
+        if sitemap_url == seed_url:
+            continue
+        if _looks_like_conference_page(sitemap_url):
+            if sitemap_url not in seen:
+                seen.add(sitemap_url)
+                candidate_urls.append(sitemap_url)
+            continue
+        if _looks_like_archive_hub_page(sitemap_url) and sitemap_url not in hub_seen:
+            hub_seen.add(sitemap_url)
+            hub_urls.append(sitemap_url)
+
+    for hub_url in hub_urls[:6]:
+        try:
+            status_code, hub_html = fetcher.fetch(hub_url)
+        except Exception:
+            continue
+        if status_code != 200 or not hub_html:
+            continue
+        for resolved, text in _extract_page_links(hub_url, hub_html):
+            if urlsplit(resolved).netloc != parsed_seed.netloc:
+                continue
+            if not _looks_like_conference_page(resolved, text):
+                continue
+            if resolved == seed_url or resolved in seen:
+                continue
+            seen.add(resolved)
+            candidate_urls.append(resolved)
+
+    return sorted(candidate_urls)
+
+
+def _extract_page_links(base_url: str, html: str) -> list[tuple[str, str]]:
+    links: list[tuple[str, str]] = []
+    seen: set[str] = set()
 
     soup = BeautifulSoup(html, "html.parser")
     for anchor in soup.find_all("a", href=True):
         href = anchor.get("href", "").strip()
         if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
             continue
-        resolved = normalize_import_url(urljoin(seed_url, href))
-        parsed = urlsplit(resolved)
-        if parsed.netloc != parsed_seed.netloc:
-            continue
-        text = anchor.get_text(" ", strip=True)
-        if not _looks_like_conference_page(resolved, text):
-            continue
-        if resolved == seed_url or resolved in seen:
+        resolved = normalize_import_url(urljoin(base_url, href))
+        if resolved in seen:
             continue
         seen.add(resolved)
-        candidate_urls.append(resolved)
+        links.append((resolved, anchor.get_text(" ", strip=True)))
 
-    for sitemap_url in _discover_sitemap_candidates(seed_url, fetcher):
-        if sitemap_url == seed_url or sitemap_url in seen:
+    for raw_candidate in PATH_CANDIDATE_RE.findall(html):
+        if raw_candidate.startswith(("mailto:", "tel:", "javascript:")):
             continue
-        seen.add(sitemap_url)
-        candidate_urls.append(sitemap_url)
+        resolved = normalize_import_url(urljoin(base_url, raw_candidate))
+        parsed = urlsplit(resolved)
+        if not parsed.netloc or parsed.path in {"", "/"}:
+            continue
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        links.append((resolved, ""))
 
-    return sorted(candidate_urls)
+    return links
 
 
 def _discover_sitemap_candidates(seed_url: str, fetcher: Fetcher) -> list[str]:
@@ -119,6 +170,13 @@ def _looks_like_conference_page(url: str, text: str = "") -> bool:
     if any(noise in haystack for noise in NOISE_HINTS):
         return False
     return bool(YEAR_RE.search(haystack)) and any(hint in haystack for hint in ARCHIVE_HINTS)
+
+
+def _looks_like_archive_hub_page(url: str, text: str = "") -> bool:
+    haystack = f"{urlsplit(url).path.lower()} {text.lower()}".strip()
+    if any(noise in haystack for noise in NOISE_HINTS):
+        return False
+    return any(hint in haystack for hint in ARCHIVE_HINTS)
 
 
 def _should_expand_archive_index(seed_url: str, candidate_urls: list[str]) -> bool:
