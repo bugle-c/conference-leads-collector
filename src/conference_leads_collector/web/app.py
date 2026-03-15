@@ -19,7 +19,7 @@ import xlsxwriter
 from conference_leads_collector.config import AppSettings
 from conference_leads_collector.services.ai_gateway import fetch_ai_gateway_credits
 from conference_leads_collector.services.source_import import expand_seed_urls
-from conference_leads_collector.services.worker import process_next_job
+from conference_leads_collector.services.worker import HttpFetcher, process_next_job
 from conference_leads_collector.services.tenchat import discover_tenchat_profiles
 from conference_leads_collector.storage.db import create_engine, create_schema, session_scope
 from conference_leads_collector.storage.repositories import (
@@ -51,7 +51,7 @@ def _require_token(authorization: str | None, settings: AppSettings, query_token
 def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_provider=None) -> FastAPI:
     app = FastAPI(title="Conference Leads Collector")
     app.state.engine = engine or create_engine(settings.database_url)
-    app.state.fetcher = fetcher
+    app.state.fetcher = fetcher or HttpFetcher()
     app.state.ai_credits_provider = ai_credits_provider or fetch_ai_gateway_credits
     create_schema(app.state.engine)
     package_templates_dir = Path(__file__).parent / "templates"

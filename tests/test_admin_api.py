@@ -184,6 +184,29 @@ async def test_import_sources_expands_archive_index_into_conference_urls(tmp_pat
 
 
 @pytest.mark.anyio
+async def test_import_sources_expands_archive_index_with_default_web_fetcher(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    monkeypatch.setattr("conference_leads_collector.web.app.HttpFetcher", ArchiveIndexFetcher)
+    app = create_app(settings, engine=engine)
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        import_response = await client.post(
+            "/api/sources/import",
+            json={"urls": ["https://aij.ru"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert import_response.status_code == 200
+        assert import_response.json() == {"inserted": 3, "skipped": 0}
+
+
+@pytest.mark.anyio
 async def test_operator_can_requeue_existing_conference(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
     create_schema(engine)
