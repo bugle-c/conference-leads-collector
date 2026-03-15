@@ -18,6 +18,7 @@ dependencies = [
   "trafilatura>=2.0,<3.0",
   "uvicorn>=0.34,<1.0",
   "xlsxwriter>=3.2,<4.0",
+  "playwright>=1.49,<2.0",
 ]
 
 [project.optional-dependencies]

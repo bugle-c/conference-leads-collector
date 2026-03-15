@@ -45,3 +45,10 @@
 - TenChat discovery should treat direct `tenchat.ru/...` values in the query box as explicit profile URLs and fetch them directly instead of sending them through public search.
 - Sponsor img[alt] extraction is now limited to sections with explicit sponsor/partner headings; previously any section/div without a heading would expose img alts as sponsor names, producing garbage.
 - Speaker name validation requires minimum 5 characters and has expanded noise filters covering CTA labels, navigation items, and common Russian web UI terms.
+- Vision-first pipeline: Playwright screenshots → Gemini Vision → text AI supplement → merge → sanitize. Vision produces 0 garbage vs text pipeline's 6+ garbage entries per conference. Text pipeline kept as automatic fallback when Playwright/AI unavailable.
+- Playwright adds ~500MB to Docker image (Chromium + system fonts). System deps installed in base stage for layer caching.
+- Cost per conference: ~$0.018 for vision (2-4 screenshots) + ~$0.003 for text supplement = ~$0.021 total. Old AI-first was ~$0.05+ (150K chars context).
+- Screenshots taken full-page with 2s lazy-load wait + scroll trigger. Max 3 subpages per conference (speakers, program, archive, sponsors).
+- Merge strategy: vision results first (higher confidence), text supplement adds missing entries. Dedup by sorted name tokens catches "Иванов Иван" == "Иван Иванов".
+- Sponsor extraction via generic section/div requires explicit sponsor/partner heading. Navigation menu-item li elements are filtered out.
+- ORG_WORDS expanded with Russian terms (институт, университет, банк, etc.) to reject organizations in speaker names. Job titles (руководитель, директор, head of, chief) also rejected.

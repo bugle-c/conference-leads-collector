@@ -90,6 +90,40 @@ class AiConferenceRefiner:
             return extracted
         return result
 
+    def extract_from_rendered_text(
+        self,
+        conference_url: str,
+        pages: list[dict[str, str]],
+    ) -> ConferenceExtractionResult | None:
+        """Extract from rendered HTML text (Playwright output). Lightweight supplement to vision."""
+        if not self.settings.ai_gateway_api_key or not pages:
+            return None
+
+        prepared_pages = [
+            {
+                "url": page["url"],
+                "text": BeautifulSoup(page["html"], "html.parser").get_text("\n", strip=True)[:10000],
+            }
+            for page in pages[:3]
+        ]
+        instructions = (
+            "Ты извлекаешь спикеров и спонсоров с сайта конференции. Верни только JSON без пояснений. "
+            "Спикеры: full_name, title, company. Спонсоры: name, category. "
+            "Убери навигацию, CTA, тарифы. Если поле неизвестно — пустая строка. Не выдумывай."
+        )
+        user_prompt = {
+            "conference_url": conference_url,
+            "pages": prepared_pages,
+            "response_schema": {
+                "speakers": [{"full_name": "", "first_name": "", "last_name": "", "title": "", "company": "", "regalia_raw": "", "needs_review": False}],
+                "sponsors": [{"name": "", "category": "", "description": "", "website": "", "needs_review": False}],
+            },
+        }
+        content = self._complete(instructions, user_prompt)
+        parsed = _extract_json_object(content)
+        result = _build_result_from_payload(parsed)
+        return result if result.speakers or result.sponsors else None
+
     def _complete(self, system_prompt: str, user_payload: dict) -> str:
         response = httpx.post(
             f"{self.settings.ai_gateway_base_url}/chat/completions",

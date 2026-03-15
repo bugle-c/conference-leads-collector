@@ -67,6 +67,36 @@ def _has_high_quality_entities(result: ConferenceExtractionResult) -> bool:
     return bool(result.speakers or result.sponsors)
 
 
+def _merge_results(
+    vision: ConferenceExtractionResult | None,
+    text: ConferenceExtractionResult | None,
+) -> ConferenceExtractionResult:
+    """Merge vision (primary) and text (supplement) results. Vision takes priority."""
+    speakers: list = []
+    sponsors: list = []
+    seen_speakers: set[str] = set()
+    seen_sponsors: set[str] = set()
+
+    # Vision results first (higher confidence, cleaner)
+    for source in [vision, text]:
+        if source is None:
+            continue
+        for s in source.speakers:
+            key = s.full_name.lower().strip()
+            sorted_key = " ".join(sorted(key.split()))
+            if key not in seen_speakers and sorted_key not in seen_speakers:
+                speakers.append(s)
+                seen_speakers.add(key)
+                seen_speakers.add(sorted_key)
+        for s in source.sponsors:
+            key = s.name.lower().strip()
+            if key not in seen_sponsors:
+                sponsors.append(s)
+                seen_sponsors.add(key)
+
+    return ConferenceExtractionResult(speakers=speakers, sponsors=sponsors)
+
+
 def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettings | None = None, ai_refiner=None) -> bool:
     active_fetcher = fetcher or HttpFetcher()
     active_ai_refiner = ai_refiner
@@ -96,25 +126,86 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
                 f"Запущена обработка конференции {source.seed_url}",
                 f"Задача #{job.id} взята в работу",
             )
-            status_code, html, extracted = _collect_best_extraction(active_fetcher, source.seed_url)
-            # Always use AI refine when available — heuristics alone produce too much garbage
-            if active_ai_refiner is not None:
+
+            vision_result = None
+            text_result = None
+            status_code = 0
+            html = ""
+
+            # --- Vision pipeline (primary) ---
+            if settings is not None and settings.ai_gateway_api_key:
                 try:
-                    refined = active_ai_refiner.refine(source.seed_url, html, extracted)
+                    from conference_leads_collector.services.browser import BrowserRenderer
+                    from conference_leads_collector.services.vision_extraction import VisionExtractor
+
+                    renderer = BrowserRenderer()
+                    rendered_pages = renderer.render_conference(source.seed_url)
+
+                    if rendered_pages:
+                        status_code = 200
+                        html = rendered_pages[0].html
+
+                        # Vision extraction from screenshots
+                        vision_extractor = VisionExtractor(settings)
+                        screenshots = [
+                            {"url": rp.url, "screenshot_b64": rp.screenshot_b64}
+                            for rp in rendered_pages
+                        ]
+                        vision_result = vision_extractor.extract_from_screenshots(
+                            source.seed_url, screenshots
+                        )
+                        events.add_event(
+                            f"Vision извлёк данные для {source.seed_url}",
+                            f"Задача #{job.id}: {len(vision_result.speakers)} спикеров, "
+                            f"{len(vision_result.sponsors)} спонсоров из {len(rendered_pages)} скриншотов",
+                        )
+
+                        # Text supplement from rendered HTML
+                        if active_ai_refiner is not None:
+                            try:
+                                text_pages = [
+                                    {"url": rp.url, "html": rp.html}
+                                    for rp in rendered_pages
+                                ]
+                                text_result = active_ai_refiner.extract_from_rendered_text(
+                                    source.seed_url, text_pages
+                                )
+                            except Exception as exc:
+                                events.add_event(
+                                    f"Text supplement недоступен для {source.seed_url}",
+                                    f"Задача #{job.id}: {exc}",
+                                    level="error",
+                                )
                 except Exception as exc:
                     events.add_event(
-                        f"AI очистка недоступна для {source.seed_url}",
-                        f"Задача #{job.id}: {exc}",
+                        f"Vision pipeline недоступен для {source.seed_url}",
+                        f"Задача #{job.id}: {exc}, переход на text pipeline",
                         level="error",
                     )
-                else:
-                    if refined.speakers or refined.sponsors:
-                        extracted = refined
+
+            # --- Fallback: text pipeline (if vision didn't run or failed) ---
+            if vision_result is None:
+                status_code, html, extracted = _collect_best_extraction(
+                    active_fetcher, source.seed_url
+                )
+                if active_ai_refiner is not None:
+                    try:
+                        refined = active_ai_refiner.refine(source.seed_url, html, extracted)
+                    except Exception as exc:
                         events.add_event(
-                            f"AI уточнил данные для {source.seed_url}",
-                            f"Задача #{job.id}: AI очистка применена",
+                            f"AI очистка недоступна для {source.seed_url}",
+                            f"Задача #{job.id}: {exc}",
+                            level="error",
                         )
-            extracted = sanitize_conference_data(extracted)
+                    else:
+                        if refined.speakers or refined.sponsors:
+                            extracted = refined
+                text_result = extracted
+
+            # --- Merge and sanitize ---
+            merged = _merge_results(vision_result, text_result)
+            extracted = sanitize_conference_data(merged)
+
             if not _has_high_quality_entities(extracted):
                 jobs.mark_failed(job, "No high-quality entities found")
                 events.add_event(
@@ -123,6 +214,7 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
                     level="error",
                 )
                 return True
+
             sources.mark_crawled(
                 source.id,
                 source.seed_url,
