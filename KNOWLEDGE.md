@@ -56,6 +56,8 @@
 - `ConferenceSource.status` can drift from reality after older failed/manual runs; before rendering admin pages, reconcile source statuses against crawl jobs so stale `pending` sources become `failed` or `crawled` when no active job exists.
 - Jinja `tojson` must not be embedded inside double-quoted HTML event attributes. The `/sources` requeue button broke in production because `onclick="... {{ url|tojson }} ..."` produced invalid markup; use `data-*` attributes plus JS event listeners instead.
 - When seed HTML is just a JS shell, worker candidate discovery should also probe `/sitemap.xml` and merge entities across multiple relevant pages (`program`, `archive`, `speakers`, etc.) instead of keeping only a single best page.
+- Candidate-page discovery for new conferences must include sponsor/partner URLs too, not only speaker/program/archive paths; otherwise sponsor-heavy sites end up `speakers>0, sponsors=0` even when partner pages exist.
+- In the text fallback pipeline, AI should be allowed to extract from multiple candidate pages when one side is sparse (`speakers < 3` or `sponsors == 0`), then merge that result with heuristics before final sanitization.
 - TenChat discovery should store broader marketing profiles and mark out-of-band follower counts for review; hard-dropping everything outside `1000..3000` caused frequent false zero-result runs.
 - AI credit values in the dashboard should be compactly rounded to 2 decimals before rendering; raw gateway floats like `22.20375925` make stat cards overflow and reduce readability.
 - Playwright adds ~500MB to Docker image (Chromium + system fonts). System deps installed in base stage for layer caching.

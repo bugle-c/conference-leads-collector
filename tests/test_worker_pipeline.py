@@ -217,6 +217,76 @@ class NoiseOnlyFetcher:
         """
 
 
+class MissingSponsorsFetcher:
+    def fetch(self, url: str):
+        pages = {
+            "https://example.com/conf": (
+                200,
+                """
+                <html><body>
+                  <a href="/program">Программа</a>
+                  <a href="/partners">Партнеры</a>
+                  <section>
+                    <h2>Программа</h2>
+                    <article class="speaker-card">
+                      <h3>Jane Roe</h3>
+                      <p>VP Marketing, Bright AI</p>
+                    </article>
+                  </section>
+                </body></html>
+                """,
+            ),
+            "https://example.com/program": (
+                200,
+                """
+                <html><body>
+                  <section>
+                    <h2>Программа</h2>
+                    <article class="speaker-card">
+                      <h3>Jane Roe</h3>
+                      <p>VP Marketing, Bright AI</p>
+                    </article>
+                  </section>
+                </body></html>
+                """,
+            ),
+            "https://example.com/partners": (
+                200,
+                """
+                <html><body>
+                  <section>
+                    <h2>Партнеры</h2>
+                    <div class="partner-card"><img alt="North Star AI" src="/logo.png" /></div>
+                  </section>
+                </body></html>
+                """,
+            ),
+        }
+        return pages[url]
+
+
+class MissingSideAi:
+    def extract_from_pages(self, conference_url: str, pages: list[dict[str, str]]):
+        return ConferenceExtractionResult(
+            speakers=[
+                SpeakerResult(
+                    full_name="Jane Roe",
+                    first_name="Jane",
+                    last_name="Roe",
+                    title="VP Marketing",
+                    company="Bright AI",
+                    regalia_raw="VP Marketing, Bright AI",
+                )
+            ],
+            sponsors=[
+                SponsorResult(name="North Star AI", category="partner"),
+            ],
+        )
+
+    def refine(self, conference_url: str, html: str, extracted):
+        return extracted
+
+
 def test_process_next_job_marks_noise_only_pages_as_failed(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
     create_schema(engine)
@@ -242,6 +312,54 @@ def test_process_next_job_marks_noise_only_pages_as_failed(tmp_path: Path) -> No
         assert source.speakers == []
         assert source.sponsors == []
         assert job.status == "failed"
+
+
+def test_process_next_job_discovers_partner_pages_for_missing_sponsors(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        sources.import_seed_urls(["https://example.com/conf"])
+        source = sources.list_sources()[0]
+        jobs.enqueue_crawl(source.id)
+
+    processed = process_next_job(engine, fetcher=MissingSponsorsFetcher())
+
+    assert processed is True
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        source = sources.list_sources()[0]
+
+        assert source.status == "crawled"
+        assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
+        assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
+
+
+def test_process_next_job_uses_ai_pages_extract_to_fill_missing_side(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        sources.import_seed_urls(["https://example.com/noise"])
+        source = sources.list_sources()[0]
+        jobs.enqueue_crawl(source.id)
+
+    processed = process_next_job(engine, fetcher=NoiseOnlyFetcher(), ai_refiner=MissingSideAi())
+
+    assert processed is True
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        source = sources.list_sources()[0]
+
+        assert source.status == "crawled"
+        assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
+        assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
 
 
 class RefiningAi:

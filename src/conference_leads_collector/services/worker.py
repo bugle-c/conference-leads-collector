@@ -99,6 +99,8 @@ def _discover_sitemap_pages(fetcher: Fetcher, seed_url: str) -> list[str]:
         haystack = parsed.path.lower()
         if not any(keyword in haystack for keyword in (
             "speaker", "speakers", "спикер", "спикеры",
+            "sponsor", "sponsors", "partner", "partners",
+            "спонсор", "спонсоры", "партнер", "партнеры", "партнёр", "партнёры",
             "program", "agenda", "программа",
             "archive", "архив",
             "expert", "experts", "эксперт",
@@ -115,7 +117,7 @@ def _discover_sitemap_pages(fetcher: Fetcher, seed_url: str) -> list[str]:
     return candidates
 
 
-def _collect_best_extraction(fetcher: Fetcher, seed_url: str) -> tuple[int, str, ConferenceExtractionResult]:
+def _collect_best_extraction(fetcher: Fetcher, seed_url: str) -> tuple[int, str, ConferenceExtractionResult, list[dict[str, str]]]:
     pages = _collect_candidate_pages(fetcher, seed_url)
     status_code = pages[0]["status_code"]
     html = pages[0]["html"]
@@ -135,7 +137,7 @@ def _collect_best_extraction(fetcher: Fetcher, seed_url: str) -> tuple[int, str,
             best_result = candidate_result
             best_score = candidate_score
 
-    return best_status, best_html, merged_result
+    return best_status, best_html, merged_result, pages
 
 
 def _has_high_quality_entities(result: ConferenceExtractionResult) -> bool:
@@ -260,10 +262,25 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
 
             # --- Fallback: text pipeline (if vision didn't run or failed) ---
             if vision_result is None:
-                status_code, html, extracted = _collect_best_extraction(
+                status_code, html, extracted, pages = _collect_best_extraction(
                     active_fetcher, source.seed_url
                 )
                 if active_ai_refiner is not None:
+                    if (
+                        hasattr(active_ai_refiner, "extract_from_pages")
+                        and (len(extracted.speakers) < 3 or not extracted.sponsors)
+                    ):
+                        try:
+                            page_refined = active_ai_refiner.extract_from_pages(source.seed_url, pages)
+                        except Exception as exc:
+                            events.add_event(
+                                f"AI добор по нескольким страницам недоступен для {source.seed_url}",
+                                f"Задача #{job.id}: {exc}",
+                                level="error",
+                            )
+                        else:
+                            if page_refined is not None:
+                                extracted = _merge_results(extracted, page_refined)
                     try:
                         refined = active_ai_refiner.refine(source.seed_url, html, extracted)
                     except Exception as exc:
