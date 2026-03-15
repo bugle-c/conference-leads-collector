@@ -2,19 +2,11 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urlsplit
 
 from playwright.sync_api import sync_playwright
 
-
-DISCOVERY_KEYWORDS = (
-    "speaker", "speakers", "спикер", "спикеры",
-    "program", "agenda", "программа",
-    "sponsor", "partner", "спонсор", "партнер", "партнёр",
-    "archive", "архив",
-    "expert", "experts", "эксперт",
-    "committee", "комитет",
-)
+from conference_leads_collector.extractors.conferences import discover_candidate_pages
 
 
 @dataclass(slots=True)
@@ -50,10 +42,17 @@ class BrowserRenderer:
 
                 # Discover and render subpages
                 subpage_urls = self._discover_subpages(seed_url, seed_page.html)
-                for sub_url in subpage_urls[: self.max_subpages]:
+                index = 0
+                while index < len(subpage_urls) and len(pages) < self.max_subpages + 1:
+                    sub_url = subpage_urls[index]
+                    index += 1
                     sub_page = self._render_page(page, sub_url)
                     if sub_page is not None:
                         pages.append(sub_page)
+                        if self._looks_like_hub_page(sub_url):
+                            for nested_url in self._discover_subpages(sub_url, sub_page.html):
+                                if nested_url not in {page.url for page in pages} and nested_url not in subpage_urls:
+                                    subpage_urls.append(nested_url)
 
                 return pages
             finally:
@@ -80,29 +79,37 @@ class BrowserRenderer:
             return None
 
     def _discover_subpages(self, seed_url: str, html: str) -> list[str]:
-        from bs4 import BeautifulSoup
-
-        soup = BeautifulSoup(html, "html.parser")
-        parsed_seed = urlsplit(seed_url)
+        discovered = discover_candidate_pages(seed_url, html)
         candidates: list[str] = []
         seen: set[str] = {seed_url}
 
-        for anchor in soup.find_all("a", href=True):
-            href = anchor.get("href", "").strip()
-            if not href or href.startswith("#") or href.startswith("mailto:"):
+        for candidate_url in discovered:
+            if candidate_url in seen:
                 continue
-            text = anchor.get_text(" ", strip=True).lower()
-            resolved = urljoin(seed_url, href)
-            parsed = urlsplit(resolved)
-            if parsed.netloc and parsed.netloc != parsed_seed.netloc:
-                continue
-            haystack = f"{text} {parsed.path.lower()}"
-            if not any(kw in haystack for kw in DISCOVERY_KEYWORDS):
-                continue
-            normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/') or parsed.path}"
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            candidates.append(normalized)
+            seen.add(candidate_url)
+            candidates.append(candidate_url)
 
         return candidates
+
+    def _looks_like_hub_page(self, url: str) -> bool:
+        path = urlsplit(url).path.lower().rstrip("/")
+        if not path:
+            return False
+        return any(
+            keyword in path
+            for keyword in (
+                "/events",
+                "/event",
+                "/archive",
+                "/program",
+                "/agenda",
+                "/conference",
+                "/conferences",
+                "/camp",
+                "/forum",
+                "/summit",
+                "/мероприят",
+                "/архив",
+                "/программа",
+            )
+        )

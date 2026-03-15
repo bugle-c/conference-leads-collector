@@ -44,6 +44,10 @@ DISCOVERY_KEYWORDS = (
     "speakers",
     "спикер",
     "спикеры",
+    "event",
+    "events",
+    "мероприят",
+    "мероприятия",
     "sponsor",
     "sponsors",
     "partner",
@@ -57,6 +61,13 @@ DISCOVERY_KEYWORDS = (
     "program",
     "agenda",
     "программа",
+    "camp",
+    "camps",
+    "митап",
+    "meetup",
+    "summit",
+    "forum",
+    "форум",
     "archive",
     "архив",
     "expert",
@@ -384,7 +395,39 @@ def discover_candidate_pages(seed_url: str, html: str) -> list[str]:
         seen.add(normalized)
         candidates.append(normalized)
 
-    return candidates
+    return sorted(candidates, key=lambda candidate: _candidate_priority(seed_url, candidate), reverse=True)
+
+
+def _candidate_priority(seed_url: str, candidate_url: str) -> int:
+    parsed_seed = urlsplit(seed_url)
+    parsed_candidate = urlsplit(candidate_url)
+    path = parsed_candidate.path.lower()
+    score = 0
+
+    if any(keyword in path for keyword in ("partner", "partners", "sponsor", "sponsors", "партнер", "партнёр", "спонсор")):
+        score += 80
+    if any(keyword in path for keyword in ("speaker", "speakers", "спикер", "спикеры")):
+        score += 60
+    if any(keyword in path for keyword in ("program", "agenda", "программа", "event", "events", "conference", "conf", "camp", "summit", "forum", "мероприят")):
+        score += 50
+    if any(keyword in path for keyword in ("archive", "архив")):
+        score += 35
+    if re.search(r"/20\d{2}(?:/|$)", path):
+        score += 30
+    if re.search(r"(20\d{2})", path):
+        score += 15
+
+    path_segments = [segment for segment in path.split("/") if segment]
+    if len(path_segments) >= 3 and path_segments[0] in {"speakers", "speaker"}:
+        score -= 35
+    if len(path_segments) >= 3 and path_segments[0] in {"partners", "partner", "sponsors", "sponsor"}:
+        score -= 10
+    if parsed_candidate.query:
+        score -= 5
+    if parsed_candidate.path.rstrip("/") == parsed_seed.path.rstrip("/"):
+        score -= 20
+
+    return score
 
 
 def score_extraction(result: ConferenceExtractionResult) -> int:

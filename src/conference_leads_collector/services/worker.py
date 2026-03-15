@@ -11,6 +11,7 @@ import httpx
 
 from conference_leads_collector.extractors.conferences import (
     ConferenceExtractionResult,
+    DISCOVERY_KEYWORDS,
     discover_candidate_pages,
     extract_conference_data,
     sanitize_conference_data,
@@ -68,15 +69,55 @@ def _collect_candidate_pages(fetcher: Fetcher, seed_url: str) -> list[dict[str, 
         candidate_urls.extend(_discover_sitemap_pages(fetcher, seed_url))
 
     seen_urls = {seed_url}
-    for candidate_url in candidate_urls[:12]:
+    pending_urls: list[str] = []
+    for candidate_url in candidate_urls:
         if candidate_url in seen_urls:
             continue
         seen_urls.add(candidate_url)
-        candidate_status, candidate_html = fetcher.fetch(candidate_url)
+        pending_urls.append(candidate_url)
+
+    index = 0
+    while index < len(pending_urls) and len(pages) < 13:
+        candidate_url = pending_urls[index]
+        index += 1
+        try:
+            candidate_status, candidate_html = fetcher.fetch(candidate_url)
+        except Exception:
+            continue
         if candidate_status != 200:
             continue
         pages.append({"url": candidate_url, "status_code": candidate_status, "html": candidate_html})
+        if _looks_like_hub_page(candidate_url):
+            for nested_url in discover_candidate_pages(candidate_url, candidate_html):
+                if nested_url in seen_urls:
+                    continue
+                seen_urls.add(nested_url)
+                pending_urls.append(nested_url)
     return pages
+
+
+def _looks_like_hub_page(url: str) -> bool:
+    path = urlsplit(url).path.lower().rstrip("/")
+    if not path:
+        return False
+    return any(
+        keyword in path
+        for keyword in (
+            "/events",
+            "/event",
+            "/archive",
+            "/program",
+            "/agenda",
+            "/conference",
+            "/conferences",
+            "/camp",
+            "/forum",
+            "/summit",
+            "/мероприят",
+            "/архив",
+            "/программа",
+        )
+    )
 
 
 def _discover_sitemap_pages(fetcher: Fetcher, seed_url: str) -> list[str]:
@@ -97,17 +138,7 @@ def _discover_sitemap_pages(fetcher: Fetcher, seed_url: str) -> list[str]:
         if parsed.netloc != parsed_seed.netloc:
             continue
         haystack = parsed.path.lower()
-        if not any(keyword in haystack for keyword in (
-            "speaker", "speakers", "спикер", "спикеры",
-            "sponsor", "sponsors", "partner", "partners",
-            "спонсор", "спонсоры", "партнер", "партнеры", "партнёр", "партнёры",
-            "program", "agenda", "программа",
-            "archive", "архив",
-            "expert", "experts", "эксперт",
-            "committee", "комитет",
-            "session", "sessions",
-            "track", "tracks",
-        )):
+        if not any(keyword in haystack for keyword in DISCOVERY_KEYWORDS):
             continue
         normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/') or parsed.path}"
         if normalized in seen or normalized == seed_url:
@@ -172,6 +203,42 @@ def _merge_results(
                 seen_sponsors.add(key)
 
     return ConferenceExtractionResult(speakers=speakers, sponsors=sponsors)
+
+
+def _is_external_blocker(url: str, error: str) -> bool:
+    lowered_url = url.lower()
+    lowered_error = error.lower()
+
+    if lowered_url.endswith(".pdf") or "t.me/" in lowered_url:
+        return True
+
+    blocker_signals = (
+        "certificate_verify_failed",
+        "hostname mismatch",
+        "name or service not known",
+        "handshake operation timed out",
+        "temporary failure in name resolution",
+        "tls",
+        "ssl",
+    )
+    return any(signal in lowered_error for signal in blocker_signals)
+
+
+def _build_blocked_note(url: str, error: str) -> str:
+    lowered_url = url.lower()
+    lowered_error = error.lower()
+
+    if lowered_url.endswith(".pdf"):
+        return "External blocker: PDF source is not yet supported"
+    if "t.me/" in lowered_url:
+        return "External blocker: Telegram pages are not crawlable via current public pipeline"
+    if "name or service not known" in lowered_error or "temporary failure in name resolution" in lowered_error:
+        return "External blocker: DNS resolution failed"
+    if "certificate_verify_failed" in lowered_error or "hostname mismatch" in lowered_error:
+        return "External blocker: SSL certificate mismatch"
+    if "handshake operation timed out" in lowered_error:
+        return "External blocker: TLS handshake timed out"
+    return f"External blocker: {error}"
 
 
 def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettings | None = None, ai_refiner=None) -> bool:
@@ -299,8 +366,14 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
             extracted = sanitize_conference_data(merged)
 
             if not _has_high_quality_entities(extracted):
-                jobs.mark_failed(job, "No high-quality entities found")
-                sources.mark_failed(source.id, "No high-quality entities found")
+                error_note = "No high-quality entities found"
+                if _is_external_blocker(source.seed_url, error_note):
+                    blocked_note = _build_blocked_note(source.seed_url, error_note)
+                    jobs.mark_failed(job, blocked_note)
+                    sources.mark_blocked(source.id, blocked_note)
+                else:
+                    jobs.mark_failed(job, error_note)
+                    sources.mark_failed(source.id, error_note)
                 events.add_event(
                     f"Обработка {source.seed_url} не дала результата",
                     f"HTTP {status_code}, задача #{job.id} не содержит валидных спикеров или спонсоров",
@@ -322,11 +395,17 @@ def process_next_job(engine, fetcher: Fetcher | None = None, settings: AppSettin
                 f"HTTP {status_code}, задача #{job.id} завершена успешно",
             )
         except Exception as exc:
-            jobs.mark_failed(job, str(exc))
-            sources.mark_failed(source.id, str(exc))
+            error_text = str(exc)
+            if _is_external_blocker(source.seed_url, error_text):
+                blocked_note = _build_blocked_note(source.seed_url, error_text)
+                jobs.mark_failed(job, blocked_note)
+                sources.mark_blocked(source.id, blocked_note)
+            else:
+                jobs.mark_failed(job, error_text)
+                sources.mark_failed(source.id, error_text)
             events.add_event(
                 f"Обработка {source.seed_url} завершилась с ошибкой",
-                str(exc),
+                error_text,
                 level="error",
             )
 

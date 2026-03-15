@@ -115,6 +115,8 @@ class ConferenceSourceRepository:
             if source.last_crawled_at is not None:
                 source.status = "crawled"
                 continue
+            if source.status == "blocked":
+                continue
             if latest_job is not None and latest_job.status == "failed":
                 source.status = "failed"
                 source.notes = latest_job.last_error
@@ -156,6 +158,15 @@ class ConferenceSourceRepository:
         if source is None:
             raise ValueError(f"Conference source {source_id} not found")
         source.status = "failed"
+        source.notes = notes
+        self.session.flush()
+        return source
+
+    def mark_blocked(self, source_id: int, notes: str | None = None) -> ConferenceSource:
+        source = self.get_source(source_id)
+        if source is None:
+            raise ValueError(f"Conference source {source_id} not found")
+        source.status = "blocked"
         source.notes = notes
         self.session.flush()
         return source

@@ -265,6 +265,83 @@ class MissingSponsorsFetcher:
         return pages[url]
 
 
+class EventIndexFetcher:
+    def fetch(self, url: str):
+        pages = {
+            "https://example.com/home": (
+                200,
+                """
+                <html><body>
+                  <a href="/events">Мероприятия</a>
+                  <a href="/partnership">Партнерство</a>
+                </body></html>
+                """,
+            ),
+            "https://example.com/events": (
+                200,
+                """
+                <html><body>
+                  <a href="/event/conferences/future-ai-2026">Future AI 2026</a>
+                </body></html>
+                """,
+            ),
+            "https://example.com/event/conferences/future-ai-2026": (
+                200,
+                """
+                <html><body>
+                  <section>
+                    <h2>Speakers</h2>
+                    <article class="speaker-card">
+                      <h3>Jane Roe</h3>
+                      <p>VP Marketing, Bright AI</p>
+                    </article>
+                  </section>
+                  <section>
+                    <h2>Partners</h2>
+                    <div class="partner-card"><img alt="North Star AI" src="/logo.png" /></div>
+                  </section>
+                </body></html>
+                """,
+            ),
+        }
+        return pages[url]
+
+
+class PartnerPriorityFetcher:
+    def fetch(self, url: str):
+        if url == "https://example.com/conf":
+            speaker_links = "\n".join(
+                f'<a href="/speakers/profile-{index}">Спикер {index}</a>'
+                for index in range(1, 15)
+            )
+            return 200, f"""
+                <html><body>
+                  {speaker_links}
+                  <a href="/partners">Партнеры</a>
+                </body></html>
+            """
+        if url == "https://example.com/partners":
+            return 200, """
+                <html><body>
+                  <section>
+                    <h2>Партнеры</h2>
+                    <div class="partner-card"><img alt="North Star AI" src="/logo.png" /></div>
+                  </section>
+                </body></html>
+            """
+        if "/speakers/profile-" in url:
+            index = url.rsplit("-", 1)[-1]
+            return 200, f"""
+                <html><body>
+                  <article class="speaker-card">
+                    <h3>Jane Roe {index}</h3>
+                    <p>VP Marketing, Bright AI</p>
+                  </article>
+                </body></html>
+            """
+        raise KeyError(url)
+
+
 class MissingSideAi:
     def extract_from_pages(self, conference_url: str, pages: list[dict[str, str]]):
         return ConferenceExtractionResult(
@@ -335,6 +412,51 @@ def test_process_next_job_discovers_partner_pages_for_missing_sponsors(tmp_path:
 
         assert source.status == "crawled"
         assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
+        assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
+
+
+def test_process_next_job_discovers_event_pages_from_home_index(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        sources.import_seed_urls(["https://example.com/home"])
+        source = sources.list_sources()[0]
+        jobs.enqueue_crawl(source.id)
+
+    processed = process_next_job(engine, fetcher=EventIndexFetcher())
+
+    assert processed is True
+
+    with session_scope(engine) as session:
+        source = ConferenceSourceRepository(session).list_sources()[0]
+
+        assert source.status == "crawled"
+        assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
+        assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
+
+
+def test_process_next_job_prioritizes_partner_pages_over_low_value_speaker_profiles(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        sources.import_seed_urls(["https://example.com/conf"])
+        source = sources.list_sources()[0]
+        jobs.enqueue_crawl(source.id)
+
+    processed = process_next_job(engine, fetcher=PartnerPriorityFetcher())
+
+    assert processed is True
+
+    with session_scope(engine) as session:
+        source = ConferenceSourceRepository(session).list_sources()[0]
+
+        assert source.status == "crawled"
         assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
 
 
@@ -535,3 +657,32 @@ def test_process_next_job_logs_ai_failure_and_falls_back_to_heuristics(tmp_path:
 
         assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
         assert any("AI очистка недоступна" in event.title for event in events)
+
+
+class TlsBlockedFetcher:
+    def fetch(self, url: str):
+        raise RuntimeError("_ssl.c:993: The handshake operation timed out")
+
+
+def test_process_next_job_marks_external_blockers_as_blocked(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        sources.import_seed_urls(["https://example.com/conf"])
+        source = sources.list_sources()[0]
+        jobs.enqueue_crawl(source.id)
+
+    processed = process_next_job(engine, fetcher=TlsBlockedFetcher())
+
+    assert processed is True
+
+    with session_scope(engine) as session:
+        source = ConferenceSourceRepository(session).list_sources()[0]
+        job = JobRepository(session).list_jobs()[0]
+
+        assert source.status == "blocked"
+        assert "External blocker" in (source.notes or "")
+        assert job.status == "failed"

@@ -68,6 +68,10 @@
 - Archive-aware seed import is a long sync operation and must run through the same worker-thread wrapper as `run-once`, `run-batch`, `requeue`, and `tenchat/discover`; otherwise bulk imports freeze the async admin UI.
 - Dashboard activity cards should show a subtle timestamp for each event; operators need to distinguish when a task ran without turning the log into a heavy table.
 - In production SQLite, concurrent UI import/requeue requests can collide with worker writes. Activity logging for web actions must be best-effort and run outside the main import/requeue transaction; otherwise `INSERT INTO activity_events` can raise `database is locked` and falsely turn a successful action into HTTP 500.
+- Candidate-page discovery for extraction must prioritize partner/sponsor pages over low-value speaker-profile detail pages and include `event/events`, `camp`, `forum`, `summit`, and Russian `мероприят*` keywords; otherwise conference home pages and Tilda/WordPress indexes under-collect one side.
+- Worker and browser discovery need one nested hop for hub pages like `/events`, `/program`, `/archive`, `/conference*`; many conference home pages link only to a hub, and the actual event page sits one level deeper.
+- Candidate fetch failures on one discovered subpage must be non-fatal. Broken auxiliary links from home/index pages should be skipped instead of failing the whole conference job.
+- External access blockers should be marked as source status `blocked` with normalized notes (`PDF`, `Telegram`, `DNS`, `SSL mismatch`, `TLS timeout`) instead of blending into generic `failed`; this keeps the remaining retry queue focused on fixable extraction gaps.
 - Playwright adds ~500MB to Docker image (Chromium + system fonts). System deps installed in base stage for layer caching.
 - Cost per conference: ~$0.018 for vision (2-4 screenshots) + ~$0.003 for text supplement = ~$0.021 total. Old AI-first was ~$0.05+ (150K chars context).
 - Screenshots taken full-page with 2s lazy-load wait + scroll trigger. Max 3 subpages per conference (speakers, program, archive, sponsors).
