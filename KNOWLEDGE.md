@@ -50,7 +50,10 @@
 - Vision-first pipeline: Playwright screenshots → Gemini Vision → text AI supplement → merge → sanitize. Vision produces 0 garbage vs text pipeline's 6+ garbage entries per conference. Text pipeline kept as automatic fallback when Playwright/AI unavailable.
 - When the vision-first pipeline is triggered from async web routes, sync Playwright must run in a separate thread; otherwise production logs show `Playwright Sync API inside the asyncio loop`, vision silently falls back to text-only extraction, and JS-heavy conferences can end with false `No high-quality entities found`.
 - Manual queue control is source-driven now: new imports create `pending` sources/jobs automatically, worker transitions sources through `running` → `crawled`/`failed`, and operators can explicitly requeue an existing conference from `/sources` without re-importing the URL.
+- Operator-triggered `requeue` must process one job immediately after enqueue; only creating a `pending` job was too opaque in the web UI and looked like the conference was "stuck in queue".
 - Jinja `tojson` must not be embedded inside double-quoted HTML event attributes. The `/sources` requeue button broke in production because `onclick="... {{ url|tojson }} ..."` produced invalid markup; use `data-*` attributes plus JS event listeners instead.
+- When seed HTML is just a JS shell, worker candidate discovery should also probe `/sitemap.xml` and merge entities across multiple relevant pages (`program`, `archive`, `speakers`, etc.) instead of keeping only a single best page.
+- TenChat discovery should store broader marketing profiles and mark out-of-band follower counts for review; hard-dropping everything outside `1000..3000` caused frequent false zero-result runs.
 - Playwright adds ~500MB to Docker image (Chromium + system fonts). System deps installed in base stage for layer caching.
 - Cost per conference: ~$0.018 for vision (2-4 screenshots) + ~$0.003 for text supplement = ~$0.021 total. Old AI-first was ~$0.05+ (150K chars context).
 - Screenshots taken full-page with 2s lazy-load wait + scroll trigger. Max 3 subpages per conference (speakers, program, archive, sponsors).

@@ -4,6 +4,8 @@ from queue import Queue
 from threading import Thread
 from dataclasses import asdict
 from typing import Protocol
+from urllib.parse import urljoin, urlsplit
+import re
 
 import httpx
 
@@ -61,12 +63,56 @@ def _render_conference_pages(seed_url: str, renderer_factory=None) -> list:
 def _collect_candidate_pages(fetcher: Fetcher, seed_url: str) -> list[dict[str, str]]:
     status_code, html = fetcher.fetch(seed_url)
     pages = [{"url": seed_url, "status_code": status_code, "html": html}]
-    for candidate_url in discover_candidate_pages(seed_url, html)[:8]:
+    candidate_urls = discover_candidate_pages(seed_url, html)
+    if len(candidate_urls) < 3:
+        candidate_urls.extend(_discover_sitemap_pages(fetcher, seed_url))
+
+    seen_urls = {seed_url}
+    for candidate_url in candidate_urls[:12]:
+        if candidate_url in seen_urls:
+            continue
+        seen_urls.add(candidate_url)
         candidate_status, candidate_html = fetcher.fetch(candidate_url)
         if candidate_status != 200:
             continue
         pages.append({"url": candidate_url, "status_code": candidate_status, "html": candidate_html})
     return pages
+
+
+def _discover_sitemap_pages(fetcher: Fetcher, seed_url: str) -> list[str]:
+    parsed_seed = urlsplit(seed_url)
+    sitemap_url = f"{parsed_seed.scheme}://{parsed_seed.netloc}/sitemap.xml"
+    try:
+        status_code, xml_text = fetcher.fetch(sitemap_url)
+    except Exception:
+        return []
+    if status_code != 200 or "<loc>" not in xml_text:
+        return []
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for raw_url in re.findall(r"<loc>(.*?)</loc>", xml_text, flags=re.IGNORECASE):
+        resolved = urljoin(seed_url, raw_url.strip())
+        parsed = urlsplit(resolved)
+        if parsed.netloc != parsed_seed.netloc:
+            continue
+        haystack = parsed.path.lower()
+        if not any(keyword in haystack for keyword in (
+            "speaker", "speakers", "спикер", "спикеры",
+            "program", "agenda", "программа",
+            "archive", "архив",
+            "expert", "experts", "эксперт",
+            "committee", "комитет",
+            "session", "sessions",
+            "track", "tracks",
+        )):
+            continue
+        normalized = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/') or parsed.path}"
+        if normalized in seen or normalized == seed_url:
+            continue
+        seen.add(normalized)
+        candidates.append(normalized)
+    return candidates
 
 
 def _collect_best_extraction(fetcher: Fetcher, seed_url: str) -> tuple[int, str, ConferenceExtractionResult]:
@@ -77,9 +123,11 @@ def _collect_best_extraction(fetcher: Fetcher, seed_url: str) -> tuple[int, str,
     best_html = html
     best_result = extract_conference_data(seed_url, html)
     best_score = score_extraction(best_result)
+    merged_result = best_result
 
     for page in pages[1:]:
         candidate_result = extract_conference_data(page["url"], page["html"])
+        merged_result = _merge_results(merged_result, candidate_result)
         candidate_score = score_extraction(candidate_result)
         if candidate_score > best_score:
             best_status = page["status_code"]
@@ -87,7 +135,7 @@ def _collect_best_extraction(fetcher: Fetcher, seed_url: str) -> tuple[int, str,
             best_result = candidate_result
             best_score = candidate_score
 
-    return best_status, best_html, best_result
+    return best_status, best_html, merged_result
 
 
 def _has_high_quality_entities(result: ConferenceExtractionResult) -> bool:

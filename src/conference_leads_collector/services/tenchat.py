@@ -49,9 +49,9 @@ def discover_tenchat_profiles(engine, queries: list[str], fetcher: TenchatFetche
                 if status_code != 200:
                     continue
                 profile = extract_tenchat_profile(profile_url, html)
-                if not _matches_marketing_lead(profile.job_title):
+                if not _matches_marketing_profile(profile.job_title):
                     continue
-                if profile.followers is None or not (1000 <= profile.followers <= 3000):
+                if profile.followers is None or profile.followers < 300:
                     continue
                 repo.upsert_profile(
                     profile_url=profile.profile_url,
@@ -60,7 +60,7 @@ def discover_tenchat_profiles(engine, queries: list[str], fetcher: TenchatFetche
                     followers=profile.followers,
                     source_query=query,
                     confidence=profile.confidence,
-                    needs_review=profile.needs_review,
+                    needs_review=profile.needs_review or not (1000 <= profile.followers <= 3000),
                     raw_fragment=profile.raw_fragment,
                 )
                 total += 1
@@ -80,10 +80,9 @@ def _resolve_profile_urls(fetcher: TenchatFetcher, query: str) -> list[str]:
     return extract_public_profile_urls(search_html)
 
 
-def _matches_marketing_lead(job_title: str | None) -> bool:
+def _matches_marketing_profile(job_title: str | None) -> bool:
     if not job_title:
         return False
     lowered = job_title.lower()
     marketing_markers = ("маркет", "marketing", "cmo", "brand")
-    leadership_markers = ("директор", "head", "руковод", "chief", "lead", "vp", "вице-президент")
-    return any(part in lowered for part in marketing_markers) and any(part in lowered for part in leadership_markers)
+    return any(part in lowered for part in marketing_markers)

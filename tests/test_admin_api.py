@@ -160,20 +160,15 @@ async def test_operator_can_requeue_existing_conference(tmp_path: Path) -> None:
         assert requeue_response.json()["queued"] is True
         assert requeue_response.json()["source_id"] == 1
 
-        second_run = await client.post(
-            "/api/jobs/run-once",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert second_run.status_code == 200
-        assert second_run.json() == {"processed": True}
-
         sources_page = await client.get("/sources", headers={"Authorization": f"Bearer {token}"})
         assert sources_page.status_code == 200
-        assert "Запустить заново" in sources_page.text or "Уже в очереди" in sources_page.text
+        assert "Запустить заново" in sources_page.text
+        assert "Jane Smith" in sources_page.text
 
         jobs_page = await client.get("/jobs", headers={"Authorization": f"Bearer {token}"})
         assert jobs_page.status_code == 200
         assert "https://example.com/conf" in jobs_page.text
+        assert "pending" not in jobs_page.text
 
 
 @pytest.mark.anyio

@@ -34,6 +34,20 @@ class DirectUrlTenChatFetcher:
         """
 
 
+class BroadTenChatFetcher:
+    def search(self, query: str) -> str:
+        return """
+        <html><body>
+          <a href="https://tenchat.ru/jane_smith">Jane Smith</a>
+        </body></html>
+        """
+
+    def fetch(self, url: str):
+        return 200, """
+        <html><body><h1>Jane Smith</h1><div>Маркетинг, бренд и коммуникации</div><div>Подписчики: 620</div></body></html>
+        """
+
+
 def build_settings() -> AppSettings:
     return AppSettings(
         app_env="test",
@@ -93,6 +107,25 @@ async def test_discover_tenchat_profiles_accepts_direct_profile_urls(tmp_path: P
         response = await client.post(
             "/api/tenchat/discover",
             json={"queries": ["https://tenchat.ru/jane_smith"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        assert response.json()["profiles_found"] == 1
+
+
+@pytest.mark.anyio
+async def test_discover_tenchat_profiles_keeps_relevant_profiles_outside_old_follower_band(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+    settings = build_settings()
+    app = create_app(settings, engine=engine, fetcher=BroadTenChatFetcher())
+    transport = httpx.ASGITransport(app=app)
+    token = build_token(settings)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/api/tenchat/discover",
+            json={"queries": ["маркетинг"]},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 200

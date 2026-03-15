@@ -255,11 +255,20 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
 
             job = jobs_repo.enqueue_crawl(source.id, force=True, priority=0)
             sources_repo.mark_pending(source.id)
+            source_url = source.seed_url
+            job_id = job.id
             events_repo.add_event(
                 f"Конференция поставлена в очередь повторно: {source.seed_url}",
                 f"Задача #{job.id} готова к повторной обработке",
             )
-            return {"queued": True, "source_id": source.id, "job_id": job.id, "seed_url": source.seed_url}
+        processed = process_next_job(app.state.engine, fetcher=app.state.fetcher, settings=settings)
+        return {
+            "queued": True,
+            "processed": processed,
+            "source_id": source_id,
+            "job_id": job_id,
+            "seed_url": source_url,
+        }
 
     @app.post("/api/jobs/run-batch")
     async def run_batch(

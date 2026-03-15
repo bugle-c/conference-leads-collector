@@ -74,6 +74,59 @@ class MultiPageFetcher:
         return pages[url]
 
 
+class SitemapFetcher:
+    def fetch(self, url: str):
+        pages = {
+            "https://example.com/conf": (
+                200,
+                """
+                <html><body>
+                  <a href="/about">О конференции</a>
+                </body></html>
+                """,
+            ),
+            "https://example.com/sitemap.xml": (
+                200,
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <url><loc>https://example.com/program</loc></url>
+                  <url><loc>https://example.com/archive</loc></url>
+                </urlset>
+                """,
+            ),
+            "https://example.com/program": (
+                200,
+                """
+                <html><body>
+                  <section>
+                    <h2>Программа</h2>
+                    <article class="speaker-card">
+                      <h3>Jane Roe</h3>
+                      <p>VP Marketing, Bright AI</p>
+                    </article>
+                  </section>
+                </body></html>
+                """,
+            ),
+            "https://example.com/archive": (
+                200,
+                """
+                <html><body>
+                  <section>
+                    <h2>Архив</h2>
+                    <article class="speaker-card">
+                      <h3>Alex Poe</h3>
+                      <p>Chief Brand Officer, North AI</p>
+                    </article>
+                  </section>
+                </body></html>
+                """,
+            ),
+        }
+        return pages[url]
+
+
 def test_process_next_job_extracts_entities_and_marks_job_done(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
     create_schema(engine)
@@ -125,6 +178,29 @@ def test_process_next_job_discovers_richer_internal_pages(tmp_path: Path) -> Non
         assert source.status == "crawled"
         assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe"]
         assert [sponsor.name for sponsor in source.sponsors] == ["North Star AI"]
+
+
+def test_process_next_job_uses_sitemap_when_seed_page_has_no_useful_links(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'collector.db'}")
+    create_schema(engine)
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        jobs = JobRepository(session)
+        sources.import_seed_urls(["https://example.com/conf"])
+        source = sources.list_sources()[0]
+        jobs.enqueue_crawl(source.id)
+
+    processed = process_next_job(engine, fetcher=SitemapFetcher())
+
+    assert processed is True
+
+    with session_scope(engine) as session:
+        sources = ConferenceSourceRepository(session)
+        source = sources.list_sources()[0]
+
+        assert source.status == "crawled"
+        assert [speaker.full_name for speaker in source.speakers] == ["Jane Roe", "Alex Poe"]
 
 
 class NoiseOnlyFetcher:
