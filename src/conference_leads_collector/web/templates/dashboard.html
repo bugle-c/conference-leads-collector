@@ -1,6 +1,67 @@
 {% extends "base.html" %}
 
 {% block content %}
+  <div id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+  <style>
+    #toast-stack {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: grid;
+      gap: 10px;
+      width: min(360px, calc(100vw - 28px));
+      pointer-events: none;
+    }
+
+    .toast {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+      transform: translateY(-8px);
+      opacity: 0;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+
+    .toast.is-visible {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast-title {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .toast-copy {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .toast-info {
+      border-color: rgba(17, 17, 17, 0.12);
+    }
+
+    .toast-success {
+      border-color: rgba(34, 114, 74, 0.18);
+      background: rgba(244, 252, 247, 0.98);
+    }
+
+    .toast-error {
+      border-color: rgba(163, 47, 47, 0.16);
+      background: rgba(255, 246, 246, 0.98);
+    }
+  </style>
+
   <section class="hero">
     <article class="hero-card">
       <div class="eyebrow">Панель оператора</div>
@@ -66,7 +127,7 @@
         <p>Вставь список URL по одному на строку. После импорта источники сразу попадут в рабочую базу.</p>
         <textarea id="seed-urls" placeholder="https://aisummit.ru&#10;https://mergeconf.ru"></textarea>
         <div class="button-row">
-          <button class="button-primary" onclick="importSeeds()">Импортировать URL</button>
+          <button class="button-primary" onclick="importSeeds(event)">Импортировать URL</button>
         </div>
       </section>
 
@@ -74,9 +135,9 @@
         <h2>Запуск обработки</h2>
         <p>Можно прогонять задачи по одной, пачкой или полностью. Это удобнее для реального объёма, чем один клик на один job.</p>
         <div class="button-row">
-          <button class="button-primary" onclick="runWorker()">Запустить один шаг</button>
-          <button class="button-secondary" onclick="runBatch(10)">Запустить 10</button>
-          <button class="button-secondary" onclick="runBatch(200)">Запустить всё</button>
+          <button class="button-primary" onclick="runWorker(event)">Запустить один шаг</button>
+          <button class="button-secondary" onclick="runBatch(event, 10)">Запустить 10</button>
+          <button class="button-secondary" onclick="runBatch(event, 200)">Запустить всё</button>
           <a class="ghost-link" href="/jobs?token={{ token or '' }}">Открыть очередь</a>
         </div>
       </section>
@@ -86,7 +147,7 @@
         <p>Запусти discovery по маркетинговым ролям и публичным профилям. Один запрос на строку.</p>
         <textarea id="tenchat-queries" placeholder="директор по маркетингу&#10;head of marketing"></textarea>
         <div class="button-row">
-          <button class="button-primary" onclick="discoverTenchat()">Запустить поиск</button>
+          <button class="button-primary" onclick="discoverTenchat(event)">Запустить поиск</button>
         </div>
       </section>
     </div>
@@ -183,36 +244,133 @@
         payload = { ok: response.ok, status: response.status };
       }
       document.getElementById("result-box").textContent = JSON.stringify(payload, null, 2);
+      return payload;
     }
 
-    async function importSeeds() {
+    function showToast(variant, title, copy = "") {
+      const stack = document.getElementById("toast-stack");
+      const toast = document.createElement("div");
+      toast.className = `toast toast-${variant}`;
+      toast.innerHTML = `
+        <span class="toast-title">${title}</span>
+        ${copy ? `<span class="toast-copy">${copy}</span>` : ""}
+      `;
+      stack.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add("is-visible"));
+      window.setTimeout(() => {
+        toast.classList.remove("is-visible");
+        window.setTimeout(() => toast.remove(), 180);
+      }, variant === "error" ? 5200 : 2600);
+    }
+
+    async function runAction(button, options) {
+      const {
+        pendingLabel,
+        pendingTitle,
+        pendingCopy,
+        successTitle,
+        successCopy,
+        errorTitle,
+        request,
+      } = options;
+      const initialLabel = button ? button.textContent : "";
+      if (button) {
+        button.disabled = true;
+        button.dataset.loading = "true";
+        button.textContent = pendingLabel;
+      }
+      showToast("info", pendingTitle, pendingCopy);
+      try {
+        const response = await request();
+        const payload = await handleResponse(response);
+        if (!response.ok) {
+          const detail = payload && typeof payload.detail === "string"
+            ? payload.detail
+            : `HTTP ${response.status}`;
+          showToast("error", errorTitle, detail);
+          return;
+        }
+        const copy = typeof successCopy === "function" ? successCopy(payload) : successCopy;
+        showToast("success", successTitle, copy);
+      } catch (error) {
+        showToast("error", errorTitle, error instanceof Error ? error.message : "Не удалось выполнить действие");
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.dataset.loading = "false";
+          button.textContent = initialLabel;
+        }
+      }
+    }
+
+    async function importSeeds(event) {
+      const button = event?.currentTarget;
       const urls = document.getElementById("seed-urls").value.split(/\n+/).map(v => v.trim()).filter(Boolean);
-      const headers = await authHeaders();
-      const response = await fetch(apiUrl("/api/sources/import"), { method: "POST", headers, body: JSON.stringify({ urls }) });
-      await handleResponse(response);
-    }
-
-    async function runWorker() {
-      const headers = await authHeaders();
-      const response = await fetch(apiUrl("/api/jobs/run-once"), { method: "POST", headers });
-      await handleResponse(response);
-    }
-
-    async function runBatch(limit) {
-      const headers = await authHeaders();
-      const response = await fetch(apiUrl("/api/jobs/run-batch"), {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ limit }),
+      await runAction(button, {
+        pendingLabel: "Импортирую...",
+        pendingTitle: "Импорт запущен",
+        pendingCopy: `URL в очереди: ${urls.length}`,
+        successTitle: "Импорт завершён",
+        successCopy: payload => `Новых: ${payload.inserted ?? 0}, дублей: ${payload.skipped ?? 0}`,
+        errorTitle: "Импорт не выполнен",
+        request: async () => {
+          const headers = await authHeaders();
+          return fetch(apiUrl("/api/sources/import"), { method: "POST", headers, body: JSON.stringify({ urls }) });
+        },
       });
-      await handleResponse(response);
     }
 
-    async function discoverTenchat() {
+    async function runWorker(event) {
+      const button = event?.currentTarget;
+      await runAction(button, {
+        pendingLabel: "Запускаю...",
+        pendingTitle: "Обработка запущена",
+        pendingCopy: "Выполняется один шаг очереди",
+        successTitle: "Шаг завершён",
+        successCopy: payload => payload.processed ? "Одна задача обработана" : "Новых задач в очереди нет",
+        errorTitle: "Шаг не выполнен",
+        request: async () => {
+          const headers = await authHeaders();
+          return fetch(apiUrl("/api/jobs/run-once"), { method: "POST", headers });
+        },
+      });
+    }
+
+    async function runBatch(event, limit) {
+      const button = event?.currentTarget;
+      await runAction(button, {
+        pendingLabel: "Запускаю...",
+        pendingTitle: "Пакетная обработка запущена",
+        pendingCopy: `Лимит запуска: ${limit}`,
+        successTitle: "Пакет завершён",
+        successCopy: payload => `Обработано: ${payload.processed ?? 0}, осталось: ${payload.remaining ?? 0}`,
+        errorTitle: "Пакет не выполнен",
+        request: async () => {
+          const headers = await authHeaders();
+          return fetch(apiUrl("/api/jobs/run-batch"), {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ limit }),
+          });
+        },
+      });
+    }
+
+    async function discoverTenchat(event) {
+      const button = event?.currentTarget;
       const queries = document.getElementById("tenchat-queries").value.split(/\n+/).map(v => v.trim()).filter(Boolean);
-      const headers = await authHeaders();
-      const response = await fetch(apiUrl("/api/tenchat/discover"), { method: "POST", headers, body: JSON.stringify({ queries }) });
-      await handleResponse(response);
+      await runAction(button, {
+        pendingLabel: "Ищу...",
+        pendingTitle: "Поиск TenChat запущен",
+        pendingCopy: `Запросов: ${queries.length}`,
+        successTitle: "Поиск завершён",
+        successCopy: payload => `Найдено профилей: ${payload.profiles_found ?? 0}`,
+        errorTitle: "Поиск не выполнен",
+        request: async () => {
+          const headers = await authHeaders();
+          return fetch(apiUrl("/api/tenchat/discover"), { method: "POST", headers, body: JSON.stringify({ queries }) });
+        },
+      });
     }
   </script>
 {% endblock %}

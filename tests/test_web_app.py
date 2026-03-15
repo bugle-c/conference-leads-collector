@@ -97,3 +97,21 @@ async def test_dashboard_shows_ai_gateway_credits() -> None:
         assert "Баланс AI" in response.text
         assert "$42.10" in response.text
         assert "$7.90" in response.text
+
+
+@pytest.mark.anyio
+async def test_dashboard_includes_action_feedback_ui() -> None:
+    settings = build_settings()
+    token = jwt.encode(
+        {"sub": "admin", "exp": int(time.time()) + 3600},
+        settings.admin_jwt_secret,
+        algorithm="HS256",
+    )
+    transport = httpx.ASGITransport(app=create_app(settings))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/", headers={"Authorization": f"Bearer {token}"})
+
+        assert response.status_code == 200
+        assert 'id="toast-stack"' in response.text
+        assert "showToast(" in response.text
+        assert "runAction(" in response.text
