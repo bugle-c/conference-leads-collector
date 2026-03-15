@@ -183,6 +183,9 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
                 for job in jobs
                 if job.job_type == "crawl_conference" and job.status in {"pending", "running"}
             }
+            pending_jobs_count = sum(1 for job in jobs if job.status == "pending")
+            running_jobs_count = sum(1 for job in jobs if job.status == "running")
+            last_job = jobs[-1] if jobs else None
             source_urls_by_id = {source.id: source.seed_url for source in sources}
             return {
                 "page_title": "Панель сбора конференций",
@@ -194,6 +197,8 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
                 "activity_events": activity_events,
                 "sources_count": len(sources),
                 "jobs_count": len(jobs),
+                "pending_jobs_count": pending_jobs_count,
+                "running_jobs_count": running_jobs_count,
                 "speakers_count": sum(len(source.speakers) for source in sources),
                 "sponsors_count": sum(len(source.sponsors) for source in sources),
                 "tenchat_count": len(tenchat_profiles),
@@ -202,6 +207,7 @@ def create_app(settings: AppSettings, engine=None, fetcher=None, ai_credits_prov
                 "current_page": current_page,
                 "queued_source_ids": queued_source_ids,
                 "source_urls_by_id": source_urls_by_id,
+                "last_job": last_job,
             }
 
     def _run_next_job_sync() -> bool:

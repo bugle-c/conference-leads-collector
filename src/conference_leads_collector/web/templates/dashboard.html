@@ -239,8 +239,25 @@
           <span class="stat-value mono">{{ sources_count }}</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Задачи</span>
+          <span class="stat-label">Всего задач</span>
           <span class="stat-value mono">{{ jobs_count }}</span>
+          <div class="page-note">
+            {% if last_job %}
+              Последняя задача: #{{ last_job.id }}
+            {% else %}
+              История задач пока пуста
+            {% endif %}
+          </div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">В очереди</span>
+          <span class="stat-value mono">{{ pending_jobs_count }}</span>
+          <div class="page-note">Ожидают запуска прямо сейчас</div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">В работе</span>
+          <span class="stat-value mono">{{ running_jobs_count }}</span>
+          <div class="page-note">Обрабатываются в данный момент</div>
         </div>
         <div class="stat-card">
           <span class="stat-label">Спикеры</span>

@@ -60,6 +60,7 @@
 - In the text fallback pipeline, AI should be allowed to extract from multiple candidate pages when one side is sparse (`speakers < 3` or `sponsors == 0`), then merge that result with heuristics before final sanitization.
 - TenChat discovery should store broader marketing profiles and mark out-of-band follower counts for review; hard-dropping everything outside `1000..3000` caused frequent false zero-result runs.
 - AI credit values in the dashboard should be compactly rounded to 2 decimals before rendering; raw gateway floats like `22.20375925` make stat cards overflow and reduce readability.
+- Dashboard stats must distinguish `Всего задач` from live queue state. Showing only the latest/total job number as `Задачи` confuses operators; render separate `pending`, `running`, and `last job` hints instead.
 - Playwright adds ~500MB to Docker image (Chromium + system fonts). System deps installed in base stage for layer caching.
 - Cost per conference: ~$0.018 for vision (2-4 screenshots) + ~$0.003 for text supplement = ~$0.021 total. Old AI-first was ~$0.05+ (150K chars context).
 - Screenshots taken full-page with 2s lazy-load wait + scroll trigger. Max 3 subpages per conference (speakers, program, archive, sponsors).

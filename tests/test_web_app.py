@@ -5,6 +5,8 @@ import jwt
 import pytest
 
 from conference_leads_collector.config import AppSettings
+from conference_leads_collector.storage.db import session_scope
+from conference_leads_collector.storage.repositories import ConferenceSourceRepository, JobRepository
 from conference_leads_collector.web.app import create_app
 
 
@@ -146,3 +148,32 @@ async def test_dashboard_uses_compact_layout_and_rounded_ai_values() -> None:
         assert "22.20" in response.text
         assert "2.80" in response.text
         assert "22.20375925" not in response.text
+
+
+@pytest.mark.anyio
+async def test_dashboard_shows_queue_metrics_instead_of_ambiguous_job_counter() -> None:
+    settings = build_settings()
+    token = jwt.encode(
+        {"sub": "admin", "exp": int(time.time()) + 3600},
+        settings.admin_jwt_secret,
+        algorithm="HS256",
+    )
+    app = create_app(settings)
+    with session_scope(app.state.engine) as session:
+        ConferenceSourceRepository(session).import_seed_urls(["https://example.com/conf"])
+        imported_source = ConferenceSourceRepository(session).list_sources_by_urls(["https://example.com/conf"])[0]
+        jobs = JobRepository(session)
+        pending_job = jobs.enqueue_crawl(imported_source.id)
+        running_job = jobs.enqueue_crawl(imported_source.id, force=True)
+        running_job.status = "running"
+        pending_job.status = "done"
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/", headers={"Authorization": f"Bearer {token}"})
+
+        assert response.status_code == 200
+        assert "Всего задач" in response.text
+        assert "В очереди" in response.text
+        assert "В работе" in response.text
+        assert "Последняя задача" in response.text
